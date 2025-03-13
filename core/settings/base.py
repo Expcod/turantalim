@@ -51,6 +51,9 @@ DJANGO_APPS = [
 CUSTOM_APPS = [
     'apps.common',
     'apps.users',
+    'apps.multilevel',
+    'apps.main',
+    'apps.payment',
 ]
 
 THIRD_PARTY_APPS = [
@@ -135,6 +138,11 @@ AUTH_PASSWORD_VALIDATORS = [
         'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
     },
 ]
+
+# EMAIL_BACKEND = "django.core.mail.backends.filebased.EmailBackend"
+# EMAIL_FILE_PATH = "/tmp/django-messages"  # Email’lar shu katalogga saqlanadi
+
+EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
 
 
 # Internationalization
