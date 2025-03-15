@@ -58,8 +58,31 @@ class ProfileDetailView(generics.RetrieveAPIView):
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated]
 
-    def get_object(self):
-        return self.request.user
+    @swagger_auto_schema(
+        operation_summary="Profil ma’lumotlarini olish",
+        manual_parameters=[
+            openapi.Parameter(
+                'username',
+                openapi.IN_QUERY,
+                description="Username",
+                type=openapi.TYPE_STRING
+            ),
+        ],
+        responses={200: UserSerializer()},
+    )
+    def get(self, request):
+        username = request.GET.get('username')  # ✅ Xato tuzatildi
+
+        if not username:
+            return Response({"error": "Username kiritilishi shart!"}, status=400)
+
+        try:
+            user = User.objects.get(username=username)  # ✅ `pk=username` xato edi, to‘g‘rilandi
+        except User.DoesNotExist:
+            return Response({"error": "User topilmadi!"}, status=404)
+
+        serializer = UserSerializer(user)
+        return Response(serializer.data, status=200)
 
 
 # ✅ Profil ma’lumotlarini yangilash
