@@ -1,3 +1,5 @@
+
+from drf_yasg import openapi
 from rest_framework import generics, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -10,13 +12,38 @@ from .models import User
 from .serializers import *
 
 
+# class RegisterAPIView(APIView):
+#     permission_classes = [AllowAny]
+#     queryset = User.objects.all()
+#     permission_classes = [IsAuthenticated]
+#     serializer_class = RegistrationSerializer
+
+#     @swagger_auto_schema(
+#         request_body=RegistrationSerializer,
+#         operation_description="Ro'yxatdan o'tish"
+#     )
+
+#     def get_object(self):
+#         return self.request.user
+    
+#     def post(self, request):
+#         serializer = RegistrationSerializer(data=request.data)
+#         if serializer.is_valid():
+#             user = serializer.save()
+#             return Response({"message": "Foydalanuvchi muvaffaqiyatli ro‘yxatdan o‘tdi."}, status=status.HTTP_201_CREATED)
+#         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 class RegisterAPIView(APIView):
     permission_classes = [AllowAny]
 
+    @swagger_auto_schema(
+        request_body=RegistrationSerializer,
+        responses={201: openapi.Response("Foydalanuvchi muvaffaqiyatli ro‘yxatdan o‘tdi.")}
+    )
     def post(self, request):
         serializer = RegistrationSerializer(data=request.data)
         if serializer.is_valid():
-            user = serializer.save()
+            serializer.save()
             return Response({"message": "Foydalanuvchi muvaffaqiyatli ro‘yxatdan o‘tdi."}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
