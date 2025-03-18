@@ -12,8 +12,4 @@ urlpatterns = [
     path('profile/', ProfileDetailView.as_view(), name='profile_detail'),
     path('profile/update/', ProfileUpdateView.as_view(), name='profile_update'),
     path('profile/change-password/', ChangePasswordView.as_view(), name='change_password'),
-    path('profile/change-language/', ChangeLanguageView.as_view(), name='change_language'),
-    path('profile/change-name/', ChangeNameView.as_view(), name='change_name'),
-    path('profile/change-picture/', ChangePictureView.as_view(), name='change_picture'),
-    path('profile/change-gender/', ChangeGenderView.as_view(),),
 ]

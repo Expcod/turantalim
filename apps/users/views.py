@@ -58,26 +58,10 @@ class ProfileDetailView(generics.RetrieveAPIView):
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated]
 
-    @swagger_auto_schema(
-        operation_summary="Profil ma’lumotlarini olish",
-        manual_parameters=[
-            openapi.Parameter(
-                'username',
-                openapi.IN_QUERY,
-                description="Username",
-                type=openapi.TYPE_STRING
-            ),
-        ],
-        responses={200: UserSerializer()},
-    )
     def get(self, request):
-        username = request.GET.get('username')  # ✅ Xato tuzatildi
-
-        if not username:
-            return Response({"error": "Username kiritilishi shart!"}, status=400)
-
+   
         try:
-            user = User.objects.get(username=username)  # ✅ `pk=username` xato edi, to‘g‘rilandi
+            user = User.objects.get(id=request.user.id)  
         except User.DoesNotExist:
             return Response({"error": "User topilmadi!"}, status=404)
 
@@ -89,6 +73,7 @@ class ProfileDetailView(generics.RetrieveAPIView):
 class ProfileUpdateView(generics.UpdateAPIView):
     serializer_class = UserUpdateSerializer
     permission_classes = [IsAuthenticated]
+
 
     def get_object(self):
         return self.request.user
@@ -153,83 +138,3 @@ class ChangePasswordView(generics.UpdateAPIView):
         user.set_password(new_password)
         user.save()
         return Response({"message": "Parol muvaffaqiyatli o‘zgartirildi!"}, status=status.HTTP_200_OK)
-
-class ChangeLanguageView(generics.UpdateAPIView):
-    """
-    Foydalanuvchi o‘z tilini o‘zgartirishi uchun view.
-    """
-    serializer_class = ChangeLanguageSerializer
-    permission_classes = [IsAuthenticated]
-
-    def get_object(self):
-        return self.request.user
-
-    def update(self, request, *args, **kwargs):
-        user = self.get_object()
-        serializer = self.get_serializer(user, data=request.data, partial=True)
-
-        if serializer.is_valid():
-            serializer.save()
-            return Response({"message": "Til muvaffaqiyatli yangilandi!"}, status=status.HTTP_200_OK)
-
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-class ChangeNameView(generics.UpdateAPIView):
-    """
-    Foydalanuvchi ism va familiyasini o‘zgartirish uchun view.
-    """
-    serializer_class = ChangeNameSerializer
-    permission_classes = [IsAuthenticated]
-
-    def get_object(self):
-        return self.request.user
-
-    def update(self, request, *args, **kwargs):
-        user = self.get_object()
-        serializer = self.get_serializer(user, data=request.data, partial=True)
-
-        if serializer.is_valid():
-            serializer.save()
-            return Response({"message": "Ism muvaffaqiyatli yangilandi!"}, status=status.HTTP_200_OK)
-
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
-class ChangePictureView(generics.UpdateAPIView):
-    """
-    Foydalanuvchi rasmini o‘zgartirish uchun view.
-    """
-    serializer_class = ChangePictureSerializer
-    permission_classes = [IsAuthenticated]
-
-    def get_object(self):
-        return self.request.user
-
-    def update(self, request, *args, **kwargs):
-        user = self.get_object()
-        serializer = self.get_serializer(user, data=request.data, partial=True)
-
-        if serializer.is_valid():
-            serializer.save()
-            return Response({"message": "Rasm muvaffaqiyatli yangilandi!"}, status=status.HTTP_200_OK)
-
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-class ChangeGenderView(generics.UpdateAPIView):
-    """
-    Foydalanuvchi jinsini o‘zgartirish uchun view.
-    """
-    serializer_class = ChangeGenderSerializer
-    permission_classes = [IsAuthenticated]
-
-    def get_object(self):
-        return self.request.user
-
-    def update(self, request, *args, **kwargs):
-        user = self.get_object()
-        serializer = self.get_serializer(user, data=request.data, partial=True)
-
-        if serializer.is_valid():
-            serializer.save()
-            return Response({"message": "Gender muvaffaqiyatli yangilandi!"}, status=status.HTTP_200_OK)
-
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

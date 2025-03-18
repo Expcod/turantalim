@@ -109,6 +109,7 @@ MIDDLEWARE = [
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "https://turantalim2.pythonanywhere.com",
+    "https://turantalim.vercel.app",
 ]
 
 CORS_ALLOW_CREDENTIALS = True

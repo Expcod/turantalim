@@ -24,6 +24,13 @@ class RegionSerializer(serializers.ModelSerializer):
 class UserSerializer(serializers.ModelSerializer):
     region = RegionSerializer(read_only=True)
     language = serializers.CharField(source='language.name', read_only=True)
+    picture = serializers.SerializerMethodField()
+
+    def get_picture(self, obj):
+        request = self.context.get("request")
+        if obj.picture:
+            return request.build_absolute_uri(obj.picture.url)  # ✅ To‘liq URL qaytarish
+        return None
 
     class Meta:
         model = User
@@ -34,10 +41,17 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 class UserUpdateSerializer(serializers.ModelSerializer):
+    picture = serializers.CharField(required=False)
     class Meta:
         model = User
         fields = ['first_name', 'last_name', 'phone', 'email', 'picture', 'region', 'language','gender']
 
+    def update(self, instance, validated_data):
+        picture_path = validated_data.get("picture")
+        if picture_path:
+            instance.picture = picture_path  # ✅ Fayl yo‘lini saqlash
+        instance.save()
+        return instance
 
 
 class ChangePasswordSerializer(serializers.Serializer):
@@ -58,31 +72,8 @@ class ChangeBalanceSerializer(serializers.ModelSerializer):
         model = User
         fields = ['balance']
 
-class ChangeLanguageSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = User
-        fields = ['language']
 
-class ChangeNameSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = User
-        fields = ['first_name', 'last_name']
 
-class ChangePictureSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = User
-        fields = ['picture']
-    
-    def update(self, instance, validated_data):
-        instance.profile_picture = validated_data.get('profile_picture', instance.profile_picture)
-        instance.save()
-        return instance
-
-class ChangeGenderSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = User
-        fields = ['gender']
-    
 
 class RegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True)
