@@ -12,27 +12,6 @@ from .models import User
 from .serializers import *
 
 
-# class RegisterAPIView(APIView):
-#     permission_classes = [AllowAny]
-#     queryset = User.objects.all()
-#     permission_classes = [IsAuthenticated]
-#     serializer_class = RegistrationSerializer
-
-#     @swagger_auto_schema(
-#         request_body=RegistrationSerializer,
-#         operation_description="Ro'yxatdan o'tish"
-#     )
-
-#     def get_object(self):
-#         return self.request.user
-    
-#     def post(self, request):
-#         serializer = RegistrationSerializer(data=request.data)
-#         if serializer.is_valid():
-#             user = serializer.save()
-#             return Response({"message": "Foydalanuvchi muvaffaqiyatli ro‘yxatdan o‘tdi."}, status=status.HTTP_201_CREATED)
-#         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
 class RegisterAPIView(APIView):
     permission_classes = [AllowAny]
 
@@ -77,6 +56,13 @@ class ProfileUpdateView(generics.UpdateAPIView):
 
     def get_object(self):
         return self.request.user
+    
+    def update(self, request, *args, **kwargs):
+        serializer = self.get_serializer(self.get_object(), data=request.data, partial=True)  # ✅ `partial=True`
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=200)
+        return Response(serializer.errors, status=400)
     
 # Custom JWT Token View
 class CustomTokenObtainPairView(TokenObtainPairView):

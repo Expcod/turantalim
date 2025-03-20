@@ -35,21 +35,34 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = [
-            'id', 'username', 'first_name', 'last_name', 'phone', 'email',
+            'id',  'first_name', 'last_name', 'phone', 'email',
             'picture', 'region', 'language', 'balance', 'created_at','gender'
         ]
 
-
+        extra_kwargs = {
+            'password': {'write_only': True}
+        }
+    def create(self, validated_data):
+        # `username` ni ishlatmaymiz, chunki uni modeldan olib tashlaganmiz
+        user = User(
+            phone=validated_data.get('phone', None),
+            email=validated_data.get('email', None),
+        )
+        user.set_password(validated_data['password'])  # Parolni hash qilish
+        user.save()
+        return user
 class UserUpdateSerializer(serializers.ModelSerializer):
+    region = serializers.PrimaryKeyRelatedField(queryset=Region.objects.all(), required=False)  
     picture = serializers.CharField(required=False)
+
     class Meta:
         model = User
         fields = ['first_name', 'last_name', 'phone', 'email', 'picture', 'region', 'language','gender']
 
     def update(self, instance, validated_data):
-        picture_path = validated_data.get("picture")
-        if picture_path:
-            instance.picture = picture_path  # ✅ Fayl yo‘lini saqlash
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        
         instance.save()
         return instance
 
@@ -74,14 +87,13 @@ class ChangeBalanceSerializer(serializers.ModelSerializer):
 
 
 
-
 class RegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True)
     confirm_password = serializers.CharField(write_only=True, required=True)
 
     class Meta:
         model = User
-        fields = ['username', 'first_name', 'last_name', 'phone', 'email', 'password', 'confirm_password']
+        fields = ['first_name', 'last_name', 'phone', 'email', 'password', 'confirm_password']
 
     def validate(self, data):
         if data['password'] != data['confirm_password']:
@@ -89,38 +101,27 @@ class RegistrationSerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
-        user = User.objects.create_user(
-            username=validated_data['username'],
-            first_name=validated_data['first_name'],
-            last_name=validated_data['last_name'],
-            phone=validated_data['phone'],
-            email=validated_data['email'],
-            password=validated_data['password']
+        validated_data.pop('confirm_password')  # confirm_password bazaga yozilmaydi
+        return User.objects.create_user(
+            phone=validated_data.get('phone'),
+            email=validated_data.get('email'),
+            first_name=validated_data.get('first_name'),
+            last_name=validated_data.get('last_name'),
+            password=validated_data.get('password'),
         )
-        return user
-
-class CustomTokenObtainSerializer(TokenObtainPairSerializer):
-    """JWT token olish uchun moslashtirilgan serializer"""
-    @classmethod
-    def get_token(cls, user):
-        token = super().get_token(user)
-        token['phone'] = user.phone
-        token['email'] = user.email
-        token['full_name'] = user.get_full_name()
-        return token
 
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
-    """Token olish uchun serializer (telefon raqami qo‘shilgan)"""
+    """Token olish uchun serializer (telefon raqami yoki email qo‘shilgan)"""
 
     @classmethod
     def get_token(cls, user):
         token = super().get_token(user)
 
         # Token ichiga qo‘shimcha maydonlarni qo‘shamiz
-        token['username'] = user.username
         token['phone'] = user.phone
         token['email'] = user.email
+        token['full_name'] = user.get_full_name()
         token['balance'] = user.balance
         token['language'] = user.language.id if user.language else None
 
