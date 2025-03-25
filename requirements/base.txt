@@ -5,3 +5,4 @@ django-jazzmin
 django-cors-headers
 djangorestframework-simplejwt
 django-filter
+drf-spectacular

@@ -29,7 +29,9 @@ class UserSerializer(serializers.ModelSerializer):
     def get_picture(self, obj):
         request = self.context.get("request")
         if obj.picture:
-            return request.build_absolute_uri(obj.picture.url)  # ✅ To‘liq URL qaytarish
+            if request is not None:
+                return request.build_absolute_uri(obj.picture.url)  # build_absolute_url o‘rniga build_absolute_uri ishlatiladi
+            return obj.picture.url  # Agar request bo‘lmasa, faqat relatif URL qaytarish
         return None
 
     class Meta:
@@ -112,13 +114,12 @@ class RegistrationSerializer(serializers.ModelSerializer):
 
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
-    """Token olish uchun serializer (telefon raqami yoki email qo‘shilgan)"""
-
     @classmethod
     def get_token(cls, user):
+        if not user.is_active:
+            raise serializers.ValidationError("Foydalanuvchi faollashtirilmagan.")
+        
         token = super().get_token(user)
-
-        # Token ichiga qo‘shimcha maydonlarni qo‘shamiz
         token['phone'] = user.phone
         token['email'] = user.email
         token['full_name'] = user.get_full_name()

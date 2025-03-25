@@ -71,7 +71,7 @@ class User(AbstractUser):
     objects = CustomUserManager()  # Set the custom manager
 
     USERNAME_FIELD = "phone"
-    REQUIRED_FIELDS = []
+    REQUIRED_FIELDS = ["email"]
 
     def clean(self):
         """Email yoki telefon bo‘lishi shart. Bo‘sh stringlarni (`""`) None qilib saqlaymiz."""

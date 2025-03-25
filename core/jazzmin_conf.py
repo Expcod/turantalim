@@ -14,9 +14,9 @@ JAZZMIN_SETTINGS: dict = {
     # Relative path to a favicon for your site, will default to site_logo if absent (ideally 32x32 px)
     # "site_icon": "assets/img/site-cion.png",
     # Welcome text on the login screen
-    "welcome_sign": "Welcome to Admin",
+    "welcome_sign": "Welcome to Turan Talim Admin",
     # Copyright on the footer
-    "copyright": "cbekoder",
+    "copyright": "Turan Talim",
     # The model admin to search from the search bar, search bar omitted if excluded
     # "search_model": "",
     # Field name on user model that contains avatar ImageField/URLField/Charfield or a callable that receives the user

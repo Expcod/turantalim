@@ -3,221 +3,19 @@ from rest_framework.views import APIView
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.pagination import PageNumberPagination
 from django.shortcuts import get_object_or_404
 from drf_yasg.utils import swagger_auto_schema
+from drf_spectacular.utils import extend_schema
 from drf_yasg import openapi
 from django.db import transaction
-from datetime import datetime
-
+from datetime import datetime, timedelta
 from .models import *
 from apps.payment.models import *
 from .serializers import *
 
 from apps.main.models import Language
 
-#  Section uchun API'lar
-class SectionListCreateAPIView(generics.ListCreateAPIView):
-    permission_classes = [IsAuthenticated]
-    queryset = Section.objects.all()
-    serializer_class = SectionSerializer
-
-    @swagger_auto_schema(
-        operation_description="Barcha Section savollari ro‘yxatini olish yoki yangisini yaratish",
-        responses={200: SectionSerializer(many=True)}
-    )
-    def get(self, request, *args, **kwargs):
-        return super().get(request, *args, **kwargs)
-
-    @swagger_auto_schema(
-        operation_description="Yangi Section savolini yaratish",
-        request_body=SectionSerializer,
-        responses={201: SectionSerializer()}
-    )
-    def post(self, request, *args, **kwargs):
-        return super().post(request, *args, **kwargs)
-
-
-class SectionDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = Section.objects.all()
-    serializer_class = SectionSerializer
-
-    @swagger_auto_schema(
-        operation_description="Section savolini ID bo‘yicha olish",
-        responses={200: SectionSerializer()}
-    )
-    def get(self, request, *args, **kwargs):
-        return super().get(request, *args, **kwargs)
-
-    @swagger_auto_schema(
-        operation_description="Section savolini yangilash",
-        request_body=SectionSerializer,
-        responses={200: SectionSerializer()}
-    )
-    def put(self, request, *args, **kwargs):
-        return super().put(request, *args, **kwargs)
-
-    @swagger_auto_schema(
-        operation_description="Section savolini o‘chirish",
-        responses={204: "O‘chirildi"}
-    )
-    def delete(self, request, *args, **kwargs):
-        return super().delete(request, *args, **kwargs)
-
-
-class TestListCreateAPIView(generics.ListCreateAPIView):
-    queryset = Test.objects.all()
-    serializer_class = TestSerializer
-
-    @swagger_auto_schema(
-        operation_summary="Testlar ro‘yxatini olish yoki yangi test yaratish",
-        responses={200: TestSerializer(many=True)},
-    )
-    def get(self, request, *args, **kwargs):
-        return super().get(request, *args, **kwargs)
-
-    @swagger_auto_schema(
-        operation_summary="Yangi test yaratish",
-        request_body=TestSerializer,
-        responses={201: TestSerializer()},
-    )
-    def post(self, request, *args, **kwargs):
-        return super().post(request, *args, **kwargs)
-
-
-class TestDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = Test.objects.all()
-    serializer_class = TestSerializer
-
-    @swagger_auto_schema(
-        operation_summary="Bitta test ma'lumotlarini olish",
-        responses={200: TestSerializer()},
-    )
-    def get(self, request, *args, **kwargs):
-        return super().get(request, *args, **kwargs)
-
-    @swagger_auto_schema(
-        operation_summary="Testni yangilash",
-        request_body=TestSerializer,
-        responses={200: TestSerializer()},
-    )
-    def put(self, request, *args, **kwargs):
-        return super().put(request, *args, **kwargs)
-
-    @swagger_auto_schema(
-        operation_summary="Testni o‘chirish",
-        responses={204: "Test muvaffaqiyatli o‘chirildi"},
-    )
-    def delete(self, request, *args, **kwargs):
-        return super().delete(request, *args, **kwargs)
-
-
-# Question API
-class QuestionListCreateAPIView(generics.ListCreateAPIView):
-    queryset = Question.objects.all()
-    serializer_class = QuestionSerializer
-
-    @swagger_auto_schema(
-        operation_summary="Savollar ro‘yxatini olish yoki yangi savol yaratish",
-        responses={200: QuestionSerializer(many=True)},
-    )
-    def get(self, request, *args, **kwargs):
-        return super().get(request, *args, **kwargs)
-
-    @swagger_auto_schema(
-        operation_summary="Yangi savol yaratish",
-        request_body=QuestionSerializer,
-        responses={201: QuestionSerializer()},
-    )
-    def post(self, request, *args, **kwargs):
-        return super().post(request, *args, **kwargs)
-
-
-class QuestionDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = Question.objects.all()
-    serializer_class = QuestionSerializer
-
-    @swagger_auto_schema(
-        operation_summary="Bitta savol ma'lumotlarini olish",
-        responses={200: QuestionSerializer()},
-    )
-    def get(self, request, *args, **kwargs):
-        return super().get(request, *args, **kwargs)
-
-    @swagger_auto_schema(
-        operation_summary="Savolni yangilash",
-        request_body=QuestionSerializer,
-        responses={200: QuestionSerializer()},
-    )
-    def put(self, request, *args, **kwargs):
-        return super().put(request, *args, **kwargs)
-
-    @swagger_auto_schema(
-        operation_summary="Savolni o‘chirish",
-        responses={204: "Savol muvaffaqiyatli o‘chirildi"},
-    )
-    def delete(self, request, *args, **kwargs):
-        return super().delete(request, *args, **kwargs)
-
-
-#  Option API
-
-
-class OptionListCreateAPIView(generics.ListCreateAPIView):
-    queryset = Option.objects.all()
-    serializer_class = OptionSerializer
-
-
-
-class OptionDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = Option.objects.all()
-    serializer_class = OptionSerializer
-
-#  UserTest API
-class UserTestListCreateAPIView(generics.ListCreateAPIView):
-    queryset = UserTest.objects.all()
-    serializer_class = UserTestSerializer
-
-    @swagger_auto_schema(
-        operation_summary="Foydalanuvchilarning test natijalari ro‘yxatini olish yoki yangi natija qo‘shish",
-        responses={200: UserTestSerializer(many=True)},
-    )
-    def get(self, request, *args, **kwargs):
-        return super().get(request, *args, **kwargs)
-
-    @swagger_auto_schema(
-        operation_summary="Foydalanuvchi uchun yangi test natijasini yaratish",
-        request_body=UserTestSerializer,
-        responses={201: UserTestSerializer()},
-    )
-    def post(self, request, *args, **kwargs):
-        return super().post(request, *args, **kwargs)
-
-
-class UserTestDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = UserTest.objects.all()
-    serializer_class = UserTestSerializer
-
-    @swagger_auto_schema(
-        operation_summary="Bitta foydalanuvchi test natijasini olish",
-        responses={200: UserTestSerializer()},
-    )
-    def get(self, request, *args, **kwargs):
-        return super().get(request, *args, **kwargs)
-
-    @swagger_auto_schema(
-        operation_summary="Foydalanuvchi test natijasini yangilash",
-        request_body=UserTestSerializer,
-        responses={200: UserTestSerializer()},
-    )
-    def put(self, request, *args, **kwargs):
-        return super().put(request, *args, **kwargs)
-
-    @swagger_auto_schema(
-        operation_summary="Foydalanuvchi test natijasini o‘chirish",
-        responses={204: "Test natijasi muvaffaqiyatli o‘chirildi"},
-    )
-    def delete(self, request, *args, **kwargs):
-        return super().delete(request, *args, **kwargs)
     
 ############################################################################################################
     #Test uchun API'lar
@@ -226,82 +24,113 @@ class TestRequestApiView(APIView):
     @swagger_auto_schema(
         operation_summary="Test so‘rash",
         manual_parameters=[
-            openapi.Parameter(
-                'language',
-                openapi.IN_QUERY,
-                description="Tilni tanlang (Language ID orqali)",
-                type=openapi.TYPE_INTEGER
-            ),
-            openapi.Parameter(
-                'test',
-                openapi.IN_QUERY,
-                description="Test turini tanlang: Listening, Writing, Reading, Speaking",
-                type=openapi.TYPE_STRING,
-                enum=['Listening', 'Writing', 'Reading', 'Speaking']
-            )
+            openapi.Parameter('language', openapi.IN_QUERY, description="Tilni tanlang (Language ID orqali)", type=openapi.TYPE_INTEGER),
+            openapi.Parameter('level', openapi.IN_QUERY, description="Test darajasini tanlang!", type=openapi.TYPE_STRING, enum=['A1', 'A2', 'B1', 'B2', 'C1', 'multilevel']),
+            openapi.Parameter('test', openapi.IN_QUERY, description="Test turini tanlang: Listening, Writing, Reading, Speaking", type=openapi.TYPE_STRING, enum=['listening', 'writing', 'reading', 'speaking'])
         ],
         responses={200: MultilevelTestSerializer()},
     )
     def get(self, request):
         language_id = request.GET.get('language')
+        level_choice = request.GET.get('level')
         test_type = request.GET.get('test')
 
-        if not language_id or not test_type:
-            return Response({"error": "Language ID va Test turi kiritilishi shart!"}, status=400)
+        if not language_id or not test_type or not level_choice:
+            return Response({"error": "Language ID, Test turi va Daraja kiritilishi shart!"}, status=400)
 
         try:
             language = Language.objects.get(pk=language_id)
         except Language.DoesNotExist:
             return Response({"error": "Til topilmadi!"}, status=404)
 
-        # Validate test type
-        TEST_TYPES = ['Listening', 'Writing', 'Reading', 'Speaking']
+        LEVEL_CHOICES = ['A1', 'A2', 'B1', 'B2', 'C1', 'multilevel']
+        if level_choice not in LEVEL_CHOICES:
+            return Response({"error": f"Noto‘g‘ri daraja! Daraja quyidagilardan biri bo‘lishi kerak: {', '.join(LEVEL_CHOICES)}."}, status=400)
+        
+        TEST_TYPES = ['listening', 'writing', 'reading', 'speaking']
         if test_type not in TEST_TYPES:
             return Response({"error": f"Noto‘g‘ri test turi! Test turi quyidagilardan biri bo‘lishi kerak: {', '.join(TEST_TYPES)}."}, status=400)
 
-        # Check for payment
-        # payment_exists = Payment.objects.filter(
-        #     user=request.user, 
-        #     test_type=test_type, 
-        #     status='paid'
-        #     ).order_by('-payment_date').first()
-        # if not payment_exists or payment_exists.expiry_date < datetime.now():
-        #     return Response(
-        #         {"error": "Siz ushbu test uchun to‘lov qilmagansiz! Iltimos, to‘lovni amalga oshiring."}, 
-        #         status=402
-        #         )
-        
-        # Check for existing test
-        # existing_test = TestResult.objects.filter(user_test__user=request.user, status='created').last()
-        # if existing_test:
-        #     test_data = {
-        #         "test_type": test_type,
-        #         "part": MultilevelSectionSerializer(existing_test.section).data
-        #     }
-        #     return Response(test_data)
-        
-        # Fetch random test section efficiently
-        section_ids = Section.objects.filter(language=language, type=test_type).values_list('id', flat=True)
-        if not section_ids:
-            return Response({"error": "Ushbu turdagi testlar mavjud emas!"}, status=404)
+        # Foydalanuvchining hozirgi test_type va language ga mos faol testini qidirish
+        existing_test = TestResult.objects.filter(
+            user_test__user=request.user,
+            user_test__language=language,
+            section__type=test_type,
+            status='started'
+        ).last()
 
-        main_section = Section.objects.get(id=choice(section_ids))
+        if existing_test:
+            if existing_test.end_time and existing_test.end_time < timezone.now():
+                existing_test.status = 'completed'
+                existing_test.save()
+                existing_test.user_test.status = 'completed'
+                existing_test.user_test.save()
+            else:
+                # Hozirgi faol testni qaytarish
+                serializer = MultilevelSectionSerializer(
+                    existing_test.section,
+                    context={'test_result': existing_test.pk, 'request': request}
+                )
+                test_data = {
+                    "test_type": test_type,
+                    "duration": existing_test.section.duration,
+                    "part": serializer.data,
+                    "test_result_id": existing_test.id
+                }
+                return Response(test_data)
+            
+        all_sections = Section.objects.filter(language=language, type=test_type, level=level_choice)
+        if not all_sections.exists():
+            return Response({"error": f"{level_choice} darajasida ushbu turdagi testlar mavjud emas!"}, status=404)
+
+        used_section_ids = TestResult.objects.filter(user_test__user=request.user).values_list('section_id', flat=True).distinct()
+        unused_sections = all_sections.exclude(id__in=used_section_ids)
+
+        if unused_sections.exists():
+            selected_section = choice(unused_sections)
+        else:
+            selected_section = choice(all_sections)
+
+        # Yangi test yaratish va boshqa faol testlarni yakunlash
+        last_user_test = UserTest.objects.filter(user=request.user, language=language, status='started').last()
+        if last_user_test:
+            new_test_result = TestResult.objects.create(
+                user_test=last_user_test,
+                section=selected_section,
+                status='started',
+                start_time=timezone.now(),
+                end_time=timezone.now() + timedelta(minutes=selected_section.duration)
+            )
+        else:
+            # Barcha boshqa faol UserTest larni yakunlash
+            UserTest.objects.filter(user=request.user, status='started').update(status='completed')
+            TestResult.objects.filter(user_test__user=request.user, status='started').update(status='completed')
+            
+            new_user_test = UserTest.objects.create(
+                user=request.user,
+                language=language,
+                status='started'
+            )
+            new_test_result = TestResult.objects.create(
+                user_test=new_user_test,
+                section=selected_section,
+                status='started',
+                start_time=timezone.now(),
+                end_time=timezone.now() + timedelta(minutes=selected_section.duration)
+            )
+
+        serializer = MultilevelSectionSerializer(
+            selected_section,
+            context={'test_result': new_test_result.pk, 'request': request}
+        )
+
         test_data = {
             "test_type": test_type,
-            "duration": main_section.duration,
-            "part": MultilevelSectionSerializer(main_section).data
+            "duration": selected_section.duration,
+            "part": serializer.data
         }
-
-        # Create UserTest and TestResult entries
-        user_test = UserTest.objects.create(
-            user=request.user, 
-            language=language
-            )
-        TestResult.objects.create(
-            user_test=user_test, 
-            section=main_section
-            )
-
+        
+        test_data["test_result_id"] = new_test_result.id
         return Response(test_data)
 
 
@@ -312,88 +141,165 @@ class TestCheckApiView(generics.CreateAPIView):
     queryset = UserAnswer.objects.all()
 
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
         user = request.user
+        test_result_id = request.data.get('test_result_id')
 
+        serializer = self.get_serializer(data=request.data, context={'request': request})
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        # Extract validated data
         question = serializer.validated_data.get('question')
         user_option = serializer.validated_data.get('user_option')
         user_answer = serializer.validated_data.get('user_answer')
 
-        # Get the current active test result
-        current_test_result = TestResult.objects.filter(
-            user_test__user=user
-        ).exclude(status="ended", user_test__status='ended')
+        # Agar test_result_id kiritilgan bo‘lsa, uni ishlatamiz
+        if test_result_id:
+            try:
+                current_test_result = TestResult.objects.get(
+                    id=test_result_id,
+                    user_test__user=user,
+                    status='started'
+                )
+            except TestResult.DoesNotExist:
+                return Response({"message": "Bu ID ga mos faol TestResult mavjud emas"}, status=status.HTTP_403_FORBIDDEN)
+        else:
+            # Agar test_result_id kiritilmagan bo‘lsa, savolning sectioniga mos TestResult ni olish
+            current_test_result = TestResult.objects.filter(
+                user_test__user=user,
+                section=question.test.section,  # Savolning bo‘limiga moslash
+                status='started'
+            ).last()
+            if not current_test_result:
+                # Agar mos TestResult topilmasa, yangi yaratish mumkin (ixtiyoriy)
+                return Response({"error": "Ushbu bo‘lim uchun faol test topilmadi!"}, status=status.HTTP_400_BAD_REQUEST)
 
-        if not current_test_result.exists():
-            return Response(
-                {"message": "User has no active tests"},
-                status=status.HTTP_403_FORBIDDEN
-            )
+        # Vaqt tugashini tekshirish
+        if current_test_result.end_time and current_test_result.end_time < timezone.now():
+            current_test_result.status = 'completed'
+            current_test_result.save()
+            current_test_result.user_test.status = 'completed'
+            current_test_result.user_test.save()
+            return Response({"message": "Test vaqti tugagan, yangi test so‘rang"}, status=status.HTTP_400_BAD_REQUEST)
 
-        current_test = current_test_result.last()
-        if question.test.section != current_test.section:
-            return Response(
-                {"message": "Question does not belong to the current test section"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        # Savolning sectioni TestResult sectioniga mos kelishini tekshirishni olib tashlaymiz
+        # Chunki endi current_test_result har doim savolning sectioniga mos tanlanadi
 
-        # Check if a UserAnswer already exists for this test_result and question
-        existing_answer = UserAnswer.objects.filter(
-            test_result=current_test,
-            question=question
-        ).first()
+        existing_answer = UserAnswer.objects.filter(test_result=current_test_result, question=question).first()
+
+        is_correct = False
+        if question.has_options:
+            correct_option = Option.objects.filter(question=question, is_correct=True).first()
+            is_correct = correct_option == user_option if user_option else False
+        else:
+            is_correct = question.answer.strip().lower() == user_answer.strip().lower() if user_answer and question.answer else False
 
         if existing_answer:
-            # Update existing UserAnswer
             existing_answer.user_option = user_option
             existing_answer.user_answer = user_answer
-            if question.has_options:
-                correct_option = Option.objects.filter(question=question, is_correct=True).first()
-                existing_answer.is_correct = correct_option == user_option
-            else:
-                existing_answer.is_correct = question.answer == user_answer
+            existing_answer.is_correct = is_correct
             existing_answer.save()
-            # Serialize the updated instance
-            serializer = self.get_serializer(existing_answer)
-            return Response(serializer.data, status=status.HTTP_200_OK)
+            response_serializer = self.get_serializer(existing_answer, context={'request': request, 'test_result': current_test_result})
+            return Response(response_serializer.data, status=status.HTTP_200_OK)
         else:
-            # Create new UserAnswer
-            serializer.validated_data['test_result'] = current_test
-            if question.has_options:
-                correct_option = Option.objects.filter(question=question, is_correct=True).first()
-                serializer.validated_data["is_correct"] = correct_option == user_option
-            else:
-                serializer.validated_data['is_correct'] = question.answer == user_answer
-
+            serializer.validated_data['test_result'] = current_test_result
+            serializer.validated_data['is_correct'] = is_correct
             self.perform_create(serializer)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     def perform_create(self, serializer):
-        serializer.save(owner=self.request.user)
+        serializer.save()
 
+    def finalize_response(self, request, response, *args, **kwargs):
+        if response.status_code in [status.HTTP_200_OK, status.HTTP_201_CREATED]:
+            test_result_id = request.data.get('test_result_id')
+            if not test_result_id:
+                question = Question.objects.get(id=request.data.get('question'))
+                test_result = TestResult.objects.filter(
+                    user_test__user=request.user,
+                    section=question.test.section,
+                    status='started'
+                ).last()
+                test_result_id = test_result.id if test_result else None
+            if test_result_id:
+                try:
+                    current_test_result = TestResult.objects.get(id=test_result_id, user_test__user=request.user, status='started')
+                    total_questions = Question.objects.filter(test__section=current_test_result.section).count()
+                    answered_questions = UserAnswer.objects.filter(test_result=current_test_result).count()
 
+                    if total_questions == answered_questions:
+                        correct_count = UserAnswer.objects.filter(test_result=current_test_result, is_correct=True).count()
+                        score = (correct_count / total_questions * 100) if total_questions > 0 else 0
+                        
+                        current_test_result.score = round(score)
+                        current_test_result.status = 'completed'
+                        current_test_result.end_time = timezone.now()
+                        current_test_result.save()
 
+                        current_user_test = current_test_result.user_test
+                        current_user_test.score = round(score)
+                        current_user_test.status = 'completed'
+                        current_user_test.save()
 
-from rest_framework.pagination import PageNumberPagination
+                        response.data['test_completed'] = True
+                        response.data['score'] = round(score)
+                except TestResult.DoesNotExist:
+                    pass
 
-class UserTestResultListView(APIView):
+        return super().finalize_response(request, response, *args, **kwargs)
+    
+
+# TestResult uchun batafsil natija
+class TestResultDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        summary="Muayyan test natijasini batafsil olish",
+        description="Foydalanuvchining muayyan TestResult ID bo‘yicha natijasini qaytaradi: to‘g‘ri/xato javoblar, foiz va daraja.",
+        responses={200: TestResultDetailSerializer(), 404: "Test natijasi topilmadi"}
+    )
+    def get(self, request, test_result_id):
+        user = request.user
+        try:
+            test_result = TestResult.objects.get(id=test_result_id, user_test__user=user)
+        except TestResult.DoesNotExist:
+            return Response({"error": "Test natijasi topilmadi"}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = TestResultDetailSerializer(test_result, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+# TestResult ro‘yxati
+class TestResultListView(APIView):
     permission_classes = [IsAuthenticated]
     pagination_class = PageNumberPagination
 
+    @extend_schema(
+        summary="Foydalanuvchining barcha test natijalari ro‘yxatini olish",
+        description="Foydalanuvchining barcha test natijalarini qisqacha ko‘rsatadi (section, language, status, percentage), pagination bilan.",
+        responses={200: TestResultListSerializer(many=True)}
+    )
     def get(self, request):
         user = request.user
-        results = TestResult.objects.filter(user_test__user=user).order_by('-created_at')
+        results = TestResult.objects.filter(user_test__user=user).order_by('-start_time')
 
-        # Paginate results
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(results, request)
         if page is not None:
-            serializer = UserTestResultSerializer(page, many=True)
+            serializer = TestResultListSerializer(page, many=True, context={'request': request})
             return paginator.get_paginated_response(serializer.data)
 
-        serializer = UserTestResultSerializer(results, many=True)
-        return Response(serializer.data, status=200)
+        serializer = TestResultListSerializer(results, many=True, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+# Umumiy TestResult
+class OverallTestResultView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        summary="Foydalanuvchining umumiy test natijasini olish",
+        description="Listening va Reading bo‘limlari bo‘yicha natijalarni va umumiy foiz hamda Multilevel darajasini qaytaradi.",
+        responses={200: OverallTestResultSerializer()}
+    )
+    def get(self, request):
+        user = request.user
+        serializer = OverallTestResultSerializer(user, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_200_OK)

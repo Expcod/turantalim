@@ -61,6 +61,7 @@ THIRD_PARTY_APPS = [
     'rest_framework',
     'drf_yasg',
     'corsheaders',
+    'drf_spectacular',
 ]
 
 INSTALLED_APPS = DJANGO_APPS + CUSTOM_APPS + THIRD_PARTY_APPS
@@ -78,6 +79,7 @@ REST_FRAMEWORK = {
     "PAGE_SIZE": 10,
     "DEFAULT_THROTTLE_RATES": {"anon": "10/second", "user": "10/second"},
     # "EXCEPTION_HANDLER": "utils.exceptionhandler.custom_exception_handler",
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
 
 SIMPLE_JWT = {
