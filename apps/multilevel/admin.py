@@ -1,20 +1,38 @@
 from django.contrib import admin
 from django import forms
-from .models import Section, Test, Question, Option
+from .models import Exam, Section, Test, Question, Option
 from django.core.exceptions import ValidationError
 
+# Exam Admin
+@admin.register(Exam)
+class ExamAdmin(admin.ModelAdmin):
+    list_display = ('title', 'language', 'level')  # Exam uchun asosiy maydonlar
+    search_fields = ('title', 'description')
+    list_filter = ('language', 'level')
+
+# Section Admin
 @admin.register(Section)
 class SectionAdmin(admin.ModelAdmin):
-    list_display = ('title', 'type', 'language', 'level', 'duration')
+    list_display = ('title', 'type', 'exam', 'duration')  # 'language' va 'level' o‘rniga 'exam'
     search_fields = ('title', 'description')
-    list_filter = ('language', 'type', 'level')
+    list_filter = ('type', 'exam')  # 'language' va 'level' o‘chirildi
 
+    def get_queryset(self, request):
+        # Optimallashtirish uchun exam bilan birga yuklash
+        return super().get_queryset(request).select_related('exam')
+
+# Test Admin
 @admin.register(Test)
 class TestAdmin(admin.ModelAdmin):
-    list_display = ('title', 'section', 'order')
+    list_display = ('title', 'section', 'order')  
     search_fields = ('title', 'description', 'text', 'options_array', 'constraints')
-    list_filter = ('section',)
+    list_filter = ('section',)  
 
+    def get_queryset(self, request):
+
+        return super().get_queryset(request).select_related('section')
+
+# Option Inline Formset
 class OptionInlineFormset(forms.BaseInlineFormSet):
     def clean(self):
         """Admin panelda faqat 1 ta `is_correct=True` bo‘lishini tekshiradi"""
@@ -27,11 +45,13 @@ class OptionInlineFormset(forms.BaseInlineFormSet):
         if correct_count == 0:
             raise ValidationError("Hech bo‘lmaganda bitta variant to‘g‘ri bo‘lishi kerak!")
 
+# Option Inline
 class OptionInline(admin.TabularInline):
     model = Option
     extra = 1
     formset = OptionInlineFormset
 
+# Question Admin
 @admin.register(Question)
 class QuestionAdmin(admin.ModelAdmin):
     list_display = ('text', 'test', 'has_options')

@@ -26,15 +26,18 @@ class TestRequestApiView(APIView):
         manual_parameters=[
             openapi.Parameter('language', openapi.IN_QUERY, description="Tilni tanlang (Language ID orqali)", type=openapi.TYPE_INTEGER),
             openapi.Parameter('level', openapi.IN_QUERY, description="Test darajasini tanlang!", type=openapi.TYPE_STRING, enum=['A1', 'A2', 'B1', 'B2', 'C1', 'multilevel']),
-            openapi.Parameter('test', openapi.IN_QUERY, description="Test turini tanlang: Listening, Writing, Reading, Speaking", type=openapi.TYPE_STRING, enum=['listening', 'writing', 'reading', 'speaking'])
+            openapi.Parameter('test', openapi.IN_QUERY, description="Test turini tanlang: Listening, Writing, Reading, Speaking", type=openapi.TYPE_STRING, enum=['listening', 'writing', 'reading', 'speaking']),
+            openapi.Parameter('exam_id', openapi.IN_QUERY, description="Imtihonni tanlang (Exam ID orqali)", type=openapi.TYPE_INTEGER),  # Yangi parametr
         ],
-        responses={200: MultilevelTestSerializer()},
+        responses={200: MultilevelSectionSerializer()},
     )
     def get(self, request):
         language_id = request.GET.get('language')
         level_choice = request.GET.get('level')
         test_type = request.GET.get('test')
+        exam_id = request.GET.get('exam_id')  # Yangi parametr
 
+        # Majburiy parametrlarni tekshirish
         if not language_id or not test_type or not level_choice:
             return Response({"error": "Language ID, Test turi va Daraja kiritilishi shart!"}, status=400)
 
@@ -51,10 +54,31 @@ class TestRequestApiView(APIView):
         if test_type not in TEST_TYPES:
             return Response({"error": f"Noto‘g‘ri test turi! Test turi quyidagilardan biri bo‘lishi kerak: {', '.join(TEST_TYPES)}."}, status=400)
 
-        # Foydalanuvchining hozirgi test_type va language ga mos faol testini qidirish
+        # Exam tanlash
+        if exam_id:
+            try:
+                exam = Exam.objects.get(pk=exam_id, language=language, level=level_choice)
+            except Exam.DoesNotExist:
+                return Response({"error": "Tanlangan Exam topilmadi yoki mos emas!"}, status=404)
+        else:
+            # Agar exam_id kiritilmagan bo‘lsa, mos Examlarni topish
+            exams = Exam.objects.filter(language=language, level=level_choice)
+            if not exams.exists():
+                return Response({"error": f"{level_choice} darajasida {language.name} tilida imtihon mavjud emas!"}, status=404)
+            return Response({
+                "message": "Iltimos, Exam tanlang!",
+                "exams": [{"id": exam.id, "title": exam.title} for exam in exams]
+            }, status=200)
+
+        # To‘lov holatini tekshirish
+        # if not UserExamPayment.objects.filter(user=request.user, exam=exam, is_paid=True).exists():
+        #     return Response({"error": "Bu imtihon uchun to‘lov qilinmagan! Iltimos, avval to‘lov qiling."}, status=403)
+
+        # Foydalanuvchining hozirgi test_type va exam ga mos faol testini qidirish
         existing_test = TestResult.objects.filter(
             user_test__user=request.user,
             user_test__language=language,
+            section__exam=exam,  # Exam bo‘yicha filtr
             section__type=test_type,
             status='started'
         ).last()
@@ -78,10 +102,11 @@ class TestRequestApiView(APIView):
                     "test_result_id": existing_test.id
                 }
                 return Response(test_data)
-            
-        all_sections = Section.objects.filter(language=language, type=test_type, level=level_choice)
+
+        # Sectionlarni Exam va type bo‘yicha filtr qilish
+        all_sections = Section.objects.filter(exam=exam, type=test_type)
         if not all_sections.exists():
-            return Response({"error": f"{level_choice} darajasida ushbu turdagi testlar mavjud emas!"}, status=404)
+            return Response({"error": f"Ushbu imtihonda {test_type} turidagi testlar mavjud emas!"}, status=404)
 
         used_section_ids = TestResult.objects.filter(user_test__user=request.user).values_list('section_id', flat=True).distinct()
         unused_sections = all_sections.exclude(id__in=used_section_ids)
@@ -127,10 +152,10 @@ class TestRequestApiView(APIView):
         test_data = {
             "test_type": test_type,
             "duration": selected_section.duration,
-            "part": serializer.data
+            "part": serializer.data,
+            "test_result_id": new_test_result.id
         }
         
-        test_data["test_result_id"] = new_test_result.id
         return Response(test_data)
 
 

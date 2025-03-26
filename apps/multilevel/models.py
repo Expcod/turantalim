@@ -25,14 +25,28 @@ LEVEL_CHOICES = [
     ("multilevel", "Multilevel"),
 ]
 
-# Section Model
-class Section(models.Model):
-    type = models.CharField(max_length=20, choices=SECTION_CHOICES, verbose_name="Bo'lim turi")
+# Exam Model
+class Exam(models.Model):
     language = models.ForeignKey(Language, on_delete=models.SET_NULL, null=True, verbose_name="Til")
     title = models.CharField(max_length=150, verbose_name="Sarlavha")
     description = models.TextField(verbose_name="Tavsif", null=True, blank=True)
-    duration = models.PositiveSmallIntegerField(default=5, verbose_name="Test vaqti (daqiqa)")
     level = models.CharField(max_length=20, choices=LEVEL_CHOICES, default="multilevel", verbose_name="Daraja")
+    price = models.DecimalField(max_digits=30, decimal_places=2, default=0.00, verbose_name="Imtihon narxi")  # To‘lov uchun
+
+    def __str__(self):
+        return self.title[:70]
+
+    class Meta:
+        verbose_name = "Exam"
+        verbose_name_plural = "Exams"
+
+# Section Model
+class Section(models.Model):
+    exam = models.ForeignKey(Exam, on_delete=models.CASCADE, null=True, blank=True, verbose_name="Imtihon")  # Section Examga bog‘lanadi
+    type = models.CharField(max_length=20, choices=SECTION_CHOICES, verbose_name="Bo'lim turi")
+    title = models.CharField(max_length=150, verbose_name="Sarlavha")
+    description = models.TextField(verbose_name="Tavsif", null=True, blank=True)
+    duration = models.PositiveSmallIntegerField(default=5, verbose_name="Test vaqti (daqiqa)")
 
     def clean(self):
         if self.duration < 1:
@@ -60,17 +74,18 @@ class Test(models.Model):
     order = models.PositiveSmallIntegerField(default=0, verbose_name="Tartib raqami")
 
     def get_options(self):
-        """JSON formatida massiv sifatida qaytaradi"""
         return json.loads(self.options_array) if self.options_array else []
 
     def set_options(self, options_list):
-        """JSON massivini stringga o‘girib saqlaydi"""
         self.options_array = json.dumps(options_list)
         self.save()
 
     def clean(self):
         if not (self.title or self.description or self.text or self.constraints):
             raise ValidationError("Testda hech bo‘lmaganda bitta matn bo‘lishi kerak")
+        # Exam va Section level mosligini tekshirish
+        if self.exam.level != self.section.exam.level:
+            raise ValidationError("Testning Exam va Section darajalari mos bo‘lishi kerak")
 
     def __str__(self):
         return self.title or str(self.pk)
@@ -79,7 +94,7 @@ class Test(models.Model):
         verbose_name = "Test"
         verbose_name_plural = "Testlar"
 
-# Question Model
+# Question Model (o‘zgarmadi)
 class Question(models.Model):
     test = models.ForeignKey(Test, on_delete=models.CASCADE, verbose_name="Savol testi")
     text = models.TextField(verbose_name="Savol matni")

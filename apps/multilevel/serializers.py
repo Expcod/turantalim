@@ -10,6 +10,11 @@ class SectionSerializer(serializers.ModelSerializer):
         model = Section
         fields = '__all__'
 
+class ExamSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Exam
+        fields = ['id', 'title', 'level', 'language']
+
 class TestSerializer(serializers.ModelSerializer):
     class Meta:
         model = Test
@@ -143,12 +148,27 @@ class MultilevelSectionSerializer(serializers.ModelSerializer):
             context=self.context
         ).data
 
+    def get_language(self, obj):
+        # Exam orqali language olish
+        if obj.exam and obj.exam.language:
+            return LanguageSerializer(obj.exam.language, context=self.context).data
+        return None
+
+    def get_level(self, obj):
+        # Exam orqali level olish
+        return obj.exam.level if obj.exam else None
+    
+    def get_exam(self, obj):
+        return ExamSerializer(obj.exam, context=self.context).data if obj.exam else None
+
     tests = serializers.SerializerMethodField()
-    language = LanguageSerializer()
+    language = serializers.SerializerMethodField('get_language')
+    level = serializers.SerializerMethodField('get_level')
+    exam = serializers.SerializerMethodField('get_exam')
 
     class Meta:
         model = Section
-        fields = ["id", "type", "language", "title", "description", "tests", "level"]
+        fields = ["id", 'exam',"type", "language", "title", "description", "tests", "level"]
 
 class TestCheckSerializer(serializers.ModelSerializer):
     question = serializers.PrimaryKeyRelatedField(queryset=Question.objects.all())
