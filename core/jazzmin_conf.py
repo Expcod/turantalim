@@ -1,16 +1,16 @@
 JAZZMIN_SETTINGS: dict = {
     # title of the window (Will default to current_admin_site.site_title if absent or None)
-    "site_title": "Admin Site Title",
+    "site_title": "Admin TuranTalim",
     # Title on the login screen (19 chars max) (defaults to current_admin_site.site_header if absent or None)
-    "site_header": "Admin Site Header",
+    "site_header": "Admin TuranTalim",
     # Title on the brand (19 chars max) (defaults to current_admin_site.site_header if absent or None)
-    "site_brand": "Admin Site Brand",
+    "site_brand": "TuranTalim",
     # Logo to use for your site, must be present in static files, used for brand on top left
-    # "site_logo": "assets/img/admin-logo.png",
-    # "login_logo": "assets/img/site-logo.png",
+    "site_logo": "assets/img/logo.png",
+    "login_logo": "assets/img/login-logo.png",
     # "login_logo_dark": "assets/img/site-logo.png",
     # CSS classes that are applied to the logo above
-    "site_logo_classes": "img",
+    # "site_logo_classes": "img",
     # Relative path to a favicon for your site, will default to site_logo if absent (ideally 32x32 px)
     # "site_icon": "assets/img/site-cion.png",
     # Welcome text on the login screen
