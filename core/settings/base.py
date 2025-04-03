@@ -58,14 +58,22 @@ CUSTOM_APPS = [
 ]
 
 THIRD_PARTY_APPS = [
+    'corsheaders',
     'rest_framework',
     'drf_yasg',
-    'corsheaders',
     'drf_spectacular',
+    'payme',
 ]
 
 INSTALLED_APPS = DJANGO_APPS + CUSTOM_APPS + THIRD_PARTY_APPS
 
+#payme settings
+PAYME_ID = env.str("PAYME_ID")  
+PAYME_KEY = env.str("PAYME_KEY")  
+PAYME_ACCOUNT_FIELD = "id"  
+PAYME_AMOUNT_FIELD = "amount" 
+PAYME_ACCOUNT_MODEL = "apps.payment.models.ExamPayment"  
+PAYME_ONE_TIME_PAYMENT = True  
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
@@ -98,9 +106,9 @@ SWAGGER_SETTINGS = {
 }
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
-    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -108,11 +116,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "https://turantalim2.pythonanywhere.com",
-    "https://turantalim.vercel.app",
-]
+CORS_ALLOW_ALL_ORIGINS = True
 
 CORS_ALLOW_CREDENTIALS = True
 

@@ -1,30 +1,29 @@
 from django.contrib import admin
-from .models import Payment
 
+from django.urls import reverse
+from django.utils.html import format_html
+from .models import ExamPayment
+from payme.models import PaymeTransactions
+# admin.site.unregister(PaymeTransactions)
 
-@admin.register(Payment)
+@admin.register(ExamPayment)
 class PaymentAdmin(admin.ModelAdmin):
-    list_display = ['user', 'test', 'amount', 'status', 'transaction_id', 'payment_url', 'created_at']
-    list_filter = ['status']
-    search_fields = ['user__email', 'test__title', 'transaction_id']
-    list_editable = ['status']
-    list_display_links = ['user', 'test']
-    readonly_fields = ['transaction_id', 'payment_url', 'created_at']
-    fieldsets = (
-        (None, {
-            'fields': ('user', 'test', 'amount', 'status')
-        }),
-        ('Payment Info', {
-            'fields': ('transaction_id', 'payment_url', 'created_at')
-        })
-    )
-    ordering = ['-created_at']
-    actions = ['make_completed', 'make_failed']
+   list_display = (
+        "id",
+        "exam",
+        "user",
+        "amount",
+        "is_paid",
+        "payment_method",
+   )
+list_filter = ("is_paid", "payment_method")
+search_fields = ("exam__title", "user__username")
 
-    def make_completed(self, request, queryset):
-        queryset.update(status='completed')
-    make_completed.short_description = 'Mark selected payments as completed'
 
-    def make_failed(self, request, queryset):
-        queryset.update(status='failed')
-    make_failed.short_description = 'Mark selected payments as failed'
+class PaymeTransactionsAdmin(admin.ModelAdmin):
+    """
+    Admin for PaymeTransactions with display, search, and filter options.
+    """
+    list_display = ['transaction_id', 'state', 'created_at']
+    search_fields = ['transaction_id']
+    list_filter = ['state']

@@ -6,7 +6,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.pagination import PageNumberPagination
 from django.shortcuts import get_object_or_404
 from drf_yasg.utils import swagger_auto_schema
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, OpenApiExample
 from drf_yasg import openapi
 from django.db import transaction
 from datetime import datetime, timedelta
@@ -71,9 +71,9 @@ class TestRequestApiView(APIView):
             }, status=200)
 
         # To‘lov holatini tekshirish
-        # if not UserExamPayment.objects.filter(user=request.user, exam=exam, is_paid=True).exists():
-        #     return Response({"error": "Bu imtihon uchun to‘lov qilinmagan! Iltimos, avval to‘lov qiling."}, status=403)
-
+        # if not ExamPayment.objects.filter(user=request.user, exam=exam, status='completed').exists():
+        #         return Response({"error": "Bu imtihon uchun to‘lov qilinmagan! Iltimos, avval to‘lov qiling."}, status=403)
+        
         # Foydalanuvchining hozirgi test_type va exam ga mos faol testini qidirish
         existing_test = TestResult.objects.filter(
             user_test__user=request.user,
@@ -160,118 +160,176 @@ class TestRequestApiView(APIView):
 
 
 
-class TestCheckApiView(generics.CreateAPIView):
+class TestCheckApiView(APIView):
     permission_classes = [IsAuthenticated]
-    serializer_class = TestCheckSerializer
-    queryset = UserAnswer.objects.all()
 
-    def create(self, request, *args, **kwargs):
+    def handle_error(self, message, status_code):
+        return Response({"error": message}, status=status_code)
+
+    @swagger_auto_schema(
+        operation_summary="Foydalanuvchi javoblarini tekshirish",
+        operation_description="Bitta yoki bir nechta savol uchun javoblarni tekshiradi.",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'test_result_id': openapi.Schema(type=openapi.TYPE_INTEGER, description='Test natijasi ID si', nullable=True),
+                'answers': openapi.Schema(
+                    type=openapi.TYPE_ARRAY,
+                    items=openapi.Schema(
+                        type=openapi.TYPE_OBJECT,
+                        properties={
+                            'question': openapi.Schema(type=openapi.TYPE_INTEGER, description='Savol ID si'),
+                            'user_option': openapi.Schema(type=openapi.TYPE_INTEGER, description='Tanlangan variant ID si', nullable=True),
+                            'user_answer': openapi.Schema(type=openapi.TYPE_STRING, description='Foydalanuvchi javobi', nullable=True),
+                        },
+                        required=['question']
+                    )
+                )
+            }
+        ),
+        responses={
+            201: TestCheckSerializer(many=True),
+            200: TestCheckSerializer(many=True),
+            400: openapi.Response(description="Validation xatosi"),
+            403: openapi.Response(description="TestResult topilmadi yoki faol emas")
+        }
+    )
+    def post(self, request, *args, **kwargs):
         user = request.user
-        test_result_id = request.data.get('test_result_id')
+        data = request.data if isinstance(request.data, dict) else {'answers': request.data}
+        serializer = BulkTestCheckSerializer(data=data, context={'request': request})
 
-        serializer = self.get_serializer(data=request.data, context={'request': request})
         if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            return self.handle_error(serializer.errors, status.HTTP_400_BAD_REQUEST)
 
-        question = serializer.validated_data.get('question')
-        user_option = serializer.validated_data.get('user_option')
-        user_answer = serializer.validated_data.get('user_answer')
+        test_result_id = serializer.validated_data.get('test_result_id')
+        answers_data = serializer.validated_data['answers']
 
-        # Agar test_result_id kiritilgan bo‘lsa, uni ishlatamiz
+        # Birinchi savoldan Exam ni aniqlash
+        question = answers_data[0]['question']
+        exam = question.test.section.exam
+
+        # TestResult ni aniqlash va vaqtni tekshirish
+        current_test_result = self.get_active_test_result(user, test_result_id, question)
+        if isinstance(current_test_result, Response):
+            return current_test_result
+
+        # Javoblarni qayta ishlash
+        responses = self.process_answers(user, current_test_result, answers_data)
+
+        # Testni yakunlash
+        final_response = self.finalize_test_result(user, current_test_result, responses)
+        status_code = status.HTTP_201_CREATED if any(r.get('is_new') for r in responses) else status.HTTP_200_OK
+        return Response(final_response, status=status_code)
+
+    def get_active_test_result(self, user, test_result_id, question):
         if test_result_id:
             try:
-                current_test_result = TestResult.objects.get(
-                    id=test_result_id,
-                    user_test__user=user,
-                    status='started'
-                )
+                test_result = TestResult.objects.get(id=test_result_id, user_test__user=user, status='started')
             except TestResult.DoesNotExist:
-                return Response({"message": "Bu ID ga mos faol TestResult mavjud emas"}, status=status.HTTP_403_FORBIDDEN)
+                return self.handle_error("Bu ID ga mos faol TestResult mavjud emas", status.HTTP_403_FORBIDDEN)
         else:
-            # Agar test_result_id kiritilmagan bo‘lsa, savolning sectioniga mos TestResult ni olish
-            current_test_result = TestResult.objects.filter(
+            test_result = TestResult.objects.filter(
                 user_test__user=user,
-                section=question.test.section,  # Savolning bo‘limiga moslash
+                section=question.test.section,
                 status='started'
             ).last()
-            if not current_test_result:
-                # Agar mos TestResult topilmasa, yangi yaratish mumkin (ixtiyoriy)
-                return Response({"error": "Ushbu bo‘lim uchun faol test topilmadi!"}, status=status.HTTP_400_BAD_REQUEST)
+            if not test_result:
+                return self.handle_error("Ushbu bo‘lim uchun faol test topilmadi!", status.HTTP_400_BAD_REQUEST)
 
-        # Vaqt tugashini tekshirish
-        if current_test_result.end_time and current_test_result.end_time < timezone.now():
-            current_test_result.status = 'completed'
-            current_test_result.save()
-            current_test_result.user_test.status = 'completed'
-            current_test_result.user_test.save()
-            return Response({"message": "Test vaqti tugagan, yangi test so‘rang"}, status=status.HTTP_400_BAD_REQUEST)
+        if test_result.end_time and test_result.end_time < timezone.now():
+            test_result.status = 'completed'
+            test_result.save()
+            test_result.user_test.status = 'completed'
+            test_result.user_test.save()
+            return self.handle_error("Test vaqti tugagan, yangi test so‘rang", status.HTTP_400_BAD_REQUEST)
 
-        # Savolning sectioni TestResult sectioniga mos kelishini tekshirishni olib tashlaymiz
-        # Chunki endi current_test_result har doim savolning sectioniga mos tanlanadi
+        return test_result
 
-        existing_answer = UserAnswer.objects.filter(test_result=current_test_result, question=question).first()
+    def process_answers(self, user, test_result, answers_data):
+        # Mavjud javoblarni olish
+        existing_answers = {ua.question_id: ua for ua in UserAnswer.objects.filter(test_result=test_result)}
+        
+        # Yangi va yangilanadigan javoblar uchun ro‘yxatlar
+        new_answers = []
+        update_answers = []
 
-        is_correct = False
-        if question.has_options:
-            correct_option = Option.objects.filter(question=question, is_correct=True).first()
-            is_correct = correct_option == user_option if user_option else False
-        else:
-            is_correct = question.answer.strip().lower() == user_answer.strip().lower() if user_answer and question.answer else False
+        for answer_data in answers_data:
+            question = answer_data['question']
+            user_option = answer_data.get('user_option')
+            user_answer = answer_data.get('user_answer')
 
-        if existing_answer:
-            existing_answer.user_option = user_option
-            existing_answer.user_answer = user_answer
-            existing_answer.is_correct = is_correct
-            existing_answer.save()
-            response_serializer = self.get_serializer(existing_answer, context={'request': request, 'test_result': current_test_result})
-            return Response(response_serializer.data, status=status.HTTP_200_OK)
-        else:
-            serializer.validated_data['test_result'] = current_test_result
-            serializer.validated_data['is_correct'] = is_correct
-            self.perform_create(serializer)
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            # To‘g‘ri javobni aniqlash
+            is_correct = False
+            if question.has_options:
+                correct_option = Option.objects.filter(question=question, is_correct=True).first()
+                is_correct = correct_option == user_option if user_option else False
+            else:
+                is_correct = (
+                    question.answer.strip().lower() == user_answer.strip().lower()
+                    if user_answer and question.answer else False
+                )
 
-    def perform_create(self, serializer):
-        serializer.save()
+            # Mavjud javobni yangilash yoki yangi javob yaratish
+            existing_answer = existing_answers.get(question.id)
+            if existing_answer:
+                existing_answer.user_option = user_option
+                existing_answer.user_answer = user_answer
+                existing_answer.is_correct = is_correct
+                update_answers.append(existing_answer)
+            else:
+                new_answer = UserAnswer(
+                    test_result=test_result,
+                    question=question,
+                    user_option=user_option,
+                    user_answer=user_answer,
+                    is_correct=is_correct
+                )
+                new_answers.append(new_answer)
 
-    def finalize_response(self, request, response, *args, **kwargs):
-        if response.status_code in [status.HTTP_200_OK, status.HTTP_201_CREATED]:
-            test_result_id = request.data.get('test_result_id')
-            if not test_result_id:
-                question = Question.objects.get(id=request.data.get('question'))
-                test_result = TestResult.objects.filter(
-                    user_test__user=request.user,
-                    section=question.test.section,
-                    status='started'
-                ).last()
-                test_result_id = test_result.id if test_result else None
-            if test_result_id:
-                try:
-                    current_test_result = TestResult.objects.get(id=test_result_id, user_test__user=request.user, status='started')
-                    total_questions = Question.objects.filter(test__section=current_test_result.section).count()
-                    answered_questions = UserAnswer.objects.filter(test_result=current_test_result).count()
+        # Bulk operatsiyalar
+        if new_answers:
+            UserAnswer.objects.bulk_create(new_answers)
+        if update_answers:
+            UserAnswer.objects.bulk_update(update_answers, ['user_option', 'user_answer', 'is_correct'])
 
-                    if total_questions == answered_questions:
-                        correct_count = UserAnswer.objects.filter(test_result=current_test_result, is_correct=True).count()
-                        score = (correct_count / total_questions * 100) if total_questions > 0 else 0
-                        
-                        current_test_result.score = round(score)
-                        current_test_result.status = 'completed'
-                        current_test_result.end_time = timezone.now()
-                        current_test_result.save()
+        # Javoblar uchun serializer tayyorlash
+        all_answers = UserAnswer.objects.filter(
+            test_result=test_result,
+            question__in=[answer_data['question'] for answer_data in answers_data]
+        )
+        response_serializer = TestCheckSerializer(all_answers, many=True, context={'request': self.request})
+        responses = [
+            {"data": data, "is_new": answer.question_id not in existing_answers}
+            for data, answer in zip(response_serializer.data, all_answers)
+        ]
 
-                        current_user_test = current_test_result.user_test
-                        current_user_test.score = round(score)
-                        current_user_test.status = 'completed'
-                        current_user_test.save()
+        return responses
 
-                        response.data['test_completed'] = True
-                        response.data['score'] = round(score)
-                except TestResult.DoesNotExist:
-                    pass
+    def finalize_test_result(self, user, test_result, responses):
+        response_data = [r["data"] for r in responses]
+        total_questions = Question.objects.filter(test__section=test_result.section).count()
+        answered_questions = UserAnswer.objects.filter(test_result=test_result).count()
 
-        return super().finalize_response(request, response, *args, **kwargs)
-    
+        if total_questions == answered_questions:
+            correct_count = UserAnswer.objects.filter(test_result=test_result, is_correct=True).count()
+            score = (correct_count / total_questions * 100) if total_questions > 0 else 0
+
+            test_result.score = round(score)
+            test_result.status = 'completed'
+            test_result.end_time = timezone.now()
+            test_result.save()
+
+            test_result.user_test.score = round(score)
+            test_result.user_test.status = 'completed'
+            test_result.user_test.save()
+
+            return {
+                "answers": response_data,
+                "test_completed": True,
+                "score": round(score)
+            }
+        return {"answers": response_data}
 
 # TestResult uchun batafsil natija
 class TestResultDetailView(APIView):

@@ -195,6 +195,16 @@ class TestCheckSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Optionsiz savol uchun javob kiritish kerak.")
         return data
 
+class BulkTestCheckSerializer(serializers.Serializer):
+    test_result_id = serializers.IntegerField(required=False, allow_null=True)
+    answers = TestCheckSerializer(many=True)
+
+    def validate(self, data):
+        question_ids = [answer['question'].id for answer in data['answers']]
+        if len(question_ids) != len(set(question_ids)):
+            raise serializers.ValidationError("Bir xil savol ID si bir nechta kiritilgan.")
+        return data
+        
 # TestResult uchun yangi serializerlar
 class TestResultDetailSerializer(serializers.ModelSerializer):
     section = serializers.CharField(source="section.title")

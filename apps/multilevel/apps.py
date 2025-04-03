@@ -6,4 +6,4 @@ class MultilevelConfig(AppConfig):
     name = 'apps.multilevel'
 
     def ready(self):
-        import apps.multilevel.models  # Signalni faollashtirish
+        import apps.multilevel.models  

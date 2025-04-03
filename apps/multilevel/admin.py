@@ -59,9 +59,3 @@ class QuestionAdmin(admin.ModelAdmin):
     list_filter = ('test', 'has_options')
     inlines = [OptionInline]
 
-# Agar Option ni alohida ko‘rish kerak bo‘lsa, izohni oling:
-# @admin.register(Option)
-# class OptionAdmin(admin.ModelAdmin):
-#     list_display = ('text', 'question', 'is_correct')
-#     search_fields = ('text',)
-#     list_filter = ('question', 'is_correct')

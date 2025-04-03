@@ -6,6 +6,7 @@ from django.urls import include, path
 from apps.main.views import redirect_to_docs
 from core.swagger.schema import swagger_urlpatterns
 
+
 urlpatterns = [
     path('', redirect_to_docs),
     path('admin/', admin.site.urls),

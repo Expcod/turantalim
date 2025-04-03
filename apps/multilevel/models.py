@@ -7,6 +7,7 @@ from django.db.models.signals import pre_save
 from django.dispatch import receiver
 from apps.main.models import Language
 from apps.users.models import User
+from apps.payment.models import ExamPayment
 from apps.common.models import BaseModel
 
 # Choices
@@ -31,11 +32,14 @@ class Exam(models.Model):
     title = models.CharField(max_length=150, verbose_name="Sarlavha")
     description = models.TextField(verbose_name="Tavsif", null=True, blank=True)
     level = models.CharField(max_length=20, choices=LEVEL_CHOICES, default="multilevel", verbose_name="Daraja")
-    price = models.DecimalField(max_digits=30, decimal_places=2, default=0.00, verbose_name="Imtihon narxi")  # To‘lov uchun
+    price = models.IntegerField(default=0, verbose_name="Narxi")
 
     def __str__(self):
         return self.title[:70]
 
+    def is_paid_by_user(self, user):
+        return ExamPayment.objects.filter(user=user, exam=self, status='completed').exists()
+    
     class Meta:
         verbose_name = "Exam"
         verbose_name_plural = "Exams"
@@ -83,8 +87,9 @@ class Test(models.Model):
     def clean(self):
         if not (self.title or self.description or self.text or self.constraints):
             raise ValidationError("Testda hech bo‘lmaganda bitta matn bo‘lishi kerak")
+
         # Exam va Section level mosligini tekshirish
-        if self.exam.level != self.section.exam.level:
+        if self.section and self.section.exam and self.section.exam.level != self.section.exam.level:
             raise ValidationError("Testning Exam va Section darajalari mos bo‘lishi kerak")
 
     def __str__(self):
@@ -149,10 +154,12 @@ class UserTest(BaseModel):
     )
     payment_status = models.CharField(
         max_length=20,
-        choices=[('pending', 'Kutilmoqda'), ('paid', 'To‘langan')],
+        choices=[('pending', 'Kutilmoqda'), ('paid', 'To‘langan'), ('failed', 'Muvaffaqiyatsiz')],
         default='pending',
         verbose_name="To‘lov holati"
     )
+    transaction_id = models.CharField(max_length=100, null=True, blank=True, verbose_name="Tranzaksiya ID")  # Payme uchun
+    exam = models.ForeignKey(Exam, on_delete=models.CASCADE, null=True, blank=True, verbose_name="Imtihon")  # Exam bilan bog‘lash
 
     def __str__(self):
         return f"{self.user.get_full_name()} - {self.language}"
