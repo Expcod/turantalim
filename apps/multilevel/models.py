@@ -131,11 +131,11 @@ class Option(models.Model):
         verbose_name = "Variant"
         verbose_name_plural = "Variantlar"
 
-# Signal for ensuring at least one correct option
-@receiver(pre_save, sender=Question)
-def ensure_correct_option(sender, instance, **kwargs):
-    if instance.has_options and not Option.objects.filter(question=instance, is_correct=True).exists():
-        raise ValidationError("Savolda kamida bitta to‘g‘ri variant bo‘lishi kerak")
+# # Signal for ensuring at least one correct option
+# @receiver(pre_save, sender=Question)
+# def ensure_correct_option(sender, instance, **kwargs):
+#     if instance.has_options and not Option.objects.filter(question=instance, is_correct=True).exists():
+#         raise ValidationError("Savolda kamida bitta to‘g‘ri variant bo‘lishi kerak")
 
 # UserTest Model
 class UserTest(BaseModel):

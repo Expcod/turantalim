@@ -5,6 +5,9 @@ urlpatterns = [
     # Main test
     path('test/', TestRequestApiView.as_view(), name='test-request'),
 
+    path('testrequest/writing/', WritingTestRequestAPIView.as_view(), name='writing-test'),
+    path('testrequest/speaking/', SpeakingTestRequestAPIView.as_view(), name='speaking-test'),
+
     
     #Check test
     path('check-test/', TestCheckApiView.as_view(), name='check-test'),
