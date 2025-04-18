@@ -4,13 +4,11 @@ urlpatterns = [
 
     # Main test
     path('test/', TestRequestApiView.as_view(), name='test-request'),
-
-    path('testrequest/writing/', WritingTestRequestAPIView.as_view(), name='writing-test'),
-    path('testrequest/speaking/', SpeakingTestRequestAPIView.as_view(), name='speaking-test'),
-
     
     #Check test
     path('check-test/', TestCheckApiView.as_view(), name='check-test'),
+    path('testcheck/writing/', WritingTestCheckApiView.as_view(), name='writing_test_check'),
+    path('testcheck/speaking/', SpeakingTestCheckApiView.as_view(), name='speaking_test_check'),
 
     # Test result
     path('test-result/<int:test_result_id>/', TestResultDetailView.as_view(), name='test-result-detail'),

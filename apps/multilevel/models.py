@@ -107,10 +107,6 @@ class Question(models.Model):
     answer = models.CharField(max_length=150, null=True, blank=True, verbose_name="Javob")
     has_options = models.BooleanField(default=True, verbose_name="Variantlar mavjud")
 
-    def clean(self):
-        if not self.has_options and not self.answer:
-            raise ValidationError("Variantlar mavjud bo‘lmagan savolda javob majburiy")
-
     def __str__(self):
         return self.text[:50]
 
@@ -130,16 +126,6 @@ class Option(models.Model):
     class Meta:
         verbose_name = "Variant"
         verbose_name_plural = "Variantlar"
-
-# # Signal for ensuring at least one correct option
-    def save_model(self, request, obj, form, change):
-        if obj.has_options and 'on' not in request.POST.getlist('option_set-__prefix__-is_correct'):
-            self.message_user(request, "Savolda kamida bitta to‘g‘ri variant bo‘lishi kerak", level='ERROR')
-            return
-        if not obj.has_options and not obj.answer:
-            self.message_user(request, "Variantlarsiz savolda javob majburiy", level='ERROR')
-            return
-        super().save_model(request, obj, form, change)
 
 # UserTest Model
 class UserTest(BaseModel):

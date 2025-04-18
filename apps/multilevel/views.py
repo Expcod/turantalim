@@ -1,3 +1,4 @@
+from datetime import timedelta
 from random import choice
 from rest_framework.views import APIView
 from rest_framework import generics, status
@@ -6,233 +7,21 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.pagination import PageNumberPagination
 from django.shortcuts import get_object_or_404
 from drf_yasg.utils import swagger_auto_schema
-from drf_spectacular.utils import extend_schema, OpenApiExample
+from drf_spectacular.utils import extend_schema
 from drf_yasg import openapi
-from django.db import transaction
-from datetime import datetime, timedelta
 from .models import *
 from apps.payment.models import *
 from .serializers import *
+from .utils import *
 
-from apps.main.models import Language
+from core.settings import base
 
 import os
-from rest_framework import views, response
 from rest_framework.permissions import IsAuthenticated
-from core.settings import base
-from .models import Test, Exam
-from .serializers import MultilevelTestSerializer
 from openai import OpenAI
-import requests
 from PIL import Image
 import speech_recognition as sr
 import logging
-
-logger = logging.getLogger(__name__)
-
-OPENAI_API_KEY = "your_openai_api_key_here"  # OpenAI API kalitingizni qo‘ying
-client = OpenAI(api_key=OPENAI_API_KEY)
-
-class WritingTestRequestAPIView(views.APIView):
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request):
-        """Writing test so‘rovini qabul qilish va tekshirish"""
-        exam_id = request.data.get('exam')
-        section_type = 'writing'
-
-        # Exam va Section tekshiruvi
-        try:
-            exam = Exam.objects.get(id=exam_id)
-            section = Section.objects.get(exam=exam, type=section_type)
-        except Exam.DoesNotExist:
-            return response.Response({"error": "Imtihon topilmadi"}, status=404)
-        except Section.DoesNotExist:
-            return response.Response({"error": "Writing bo‘limi topilmadi"}, status=404)
-
-        # UserTest yaratish yoki olish
-        user_test, created = UserTest.objects.get_or_create(
-            user=request.user,
-            exam=exam,
-            defaults={'status': 'started',}  # To‘lov oldindan tasdiqlangan deb faraz qilamiz
-        )
-
-        # TestResult yaratish
-        test_result, created = TestResult.objects.get_or_create(
-            user_test=user_test,
-            section=section,
-            defaults={'status': 'started'}
-        )
-
-        # Rasmni qabul qilish
-        writing_image = request.FILES.get('writing_image')
-        if not writing_image:
-            return response.Response({"error": "Rasm yuklanmadi"}, status=400)
-
-        # Rasmni matnga aylantirish (OCR)
-        image_path = os.path.join(base.MEDIA_ROOT, f"writing_images/{writing_image.name}")
-        os.makedirs(os.path.dirname(image_path), exist_ok=True)
-        with open(image_path, 'wb') as f:
-            for chunk in writing_image.chunks():
-                f.write(chunk)
-
-        try:
-            with Image.open(image_path) as img:
-                ocr_response = client.chat.completions.create(
-                    model="gpt-4-vision-preview",
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": "Bu rasmda yozilgan matnni o‘qib bering."},
-                                {"type": "image_url", "image_url": {"url": f"file://{image_path}"}},
-                            ],
-                        }
-                    ],
-                )
-                text = ocr_response.choices[0].message.content
-        except Exception as e:
-            logger.error(f"Writing OCR xatosi: {str(e)}")
-            return response.Response({"error": "Rasmni o‘qishda xatolik"}, status=500)
-
-        # ChatGPT bilan tekshirish
-        prompt = (
-            f"Foydalanuvchi Turk tili multilevel imtihoni uchun writing javobini yubordi: '{text}'. "
-            "Javobni turk tili grammatikasi va multilevel qoidalariga ko‘ra tekshirib, "
-            "batafsil izoh bilan 0-100 oralig‘ida baho bering."
-        )
-        try:
-            gpt_response = client.chat.completions.create(
-                model="gpt-4",
-                messages=[{"role": "user", "content": prompt}],
-            )
-            result = gpt_response.choices[0].message.content
-            # Natijadan score ajratib olish (masalan, "Baho: 85" formatida kelsa)
-            score = int(result.split("Baho:")[-1].strip()) if "Baho:" in result else 50
-        except Exception as e:
-            logger.error(f"ChatGPT xatosi (writing): {str(e)}")
-            return response.Response({"error": "Javobni tekshirishda xatolik"}, status=500)
-
-        # UserAnswer saqlash
-        question = Question.objects.filter(test__section=section).first()  # Writing uchun savol mavjud deb faraz qilamiz
-        if not question:
-            question = Question.objects.create(test=section.test_set.first(), text="Writing javobi")
-        
-        UserAnswer.objects.create(
-            test_result=test_result,
-            question=question,
-            user_answer=text,
-            is_correct=score >= 50  # 50 dan yuqori bo‘lsa to‘g‘ri deb hisoblaymiz
-        )
-
-        # TestResult yangilash
-        test_result.status = 'completed'
-        test_result.score = score
-        test_result.end_time = timezone.now()
-        test_result.save()
-
-        return response.Response({
-            "message": "Writing test muvaffaqiyatli tekshirildi",
-            "result": result,
-            "score": score
-        })
-
-class SpeakingTestRequestAPIView(views.APIView):
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request):
-        """Speaking test so‘rovini qabul qilish va tekshirish"""
-        exam_id = request.data.get('exam')
-        section_type = 'speaking'
-
-        # Exam va Section tekshiruvi
-        try:
-            exam = Exam.objects.get(id=exam_id)
-            section = Section.objects.get(exam=exam, type=section_type)
-        except Exam.DoesNotExist:
-            return response.Response({"error": "Imtihon topilmadi"}, status=404)
-        except Section.DoesNotExist:
-            return response.Response({"error": "Speaking bo‘limi topilmadi"}, status=404)
-
-        # UserTest yaratish yoki olish
-        user_test, created = UserTest.objects.get_or_create(
-            user=request.user,
-            exam=exam,
-            defaults={'status': 'started',}
-        )
-
-        # TestResult yaratish
-        test_result, created = TestResult.objects.get_or_create(
-            user_test=user_test,
-            section=section,
-            defaults={'status': 'started'}
-        )
-
-        # Audio faylni qabul qilish
-        speaking_audio = request.FILES.get('speaking_audio')
-        if not speaking_audio:
-            return response.Response({"error": "Audio yuklanmadi"}, status=400)
-
-        # Audio faylni saqlash
-        audio_path = os.path.join(base.MEDIA_ROOT, f"speaking_audios/{speaking_audio.name}")
-        os.makedirs(os.path.dirname(audio_path), exist_ok=True)
-        with open(audio_path, 'wb') as f:
-            for chunk in speaking_audio.chunks():
-                f.write(chunk)
-
-        # Audio faylni matnga aylantirish (Speech-to-Text)
-        recognizer = sr.Recognizer()
-        try:
-            with sr.AudioFile(audio_path) as source:
-                audio = recognizer.record(source)
-                text = recognizer.recognize_google(audio, language="tr-TR")  # Turk tili uchun
-        except Exception as e:
-            logger.error(f"Speaking STT xatosi: {str(e)}")
-            return response.Response({"error": "Audio o‘qishda xatolik"}, status=500)
-
-        # ChatGPT bilan tekshirish
-        prompt = (
-            f"Foydalanuvchi Turk tili multilevel imtihoni uchun speaking javobini yubordi: '{text}'. "
-            "Javobni turk tili grammatikasi va multilevel qoidalariga ko‘ra tekshirib, "
-            "batafsil izoh bilan 0-100 oralig‘ida baho bering."
-        )
-        try:
-            gpt_response = client.chat.completions.create(
-                model="gpt-4",
-                messages=[{"role": "user", "content": prompt}],
-            )
-            result = gpt_response.choices[0].message.content
-            score = int(result.split("Baho:")[-1].strip()) if "Baho:" in result else 50
-        except Exception as e:
-            logger.error(f"ChatGPT xatosi (speaking): {str(e)}")
-            return response.Response({"error": "Javobni tekshirishda xatolik"}, status=500)
-
-        # UserAnswer saqlash
-        question = Question.objects.filter(test__section=section).first()  # Speaking uchun savol mavjud deb faraz qilamiz
-        if not question:
-            question = Question.objects.create(test=section.test_set.first(), text="Speaking javobi")
-        
-        UserAnswer.objects.create(
-            test_result=test_result,
-            question=question,
-            user_answer=text,
-            is_correct=score >= 50
-        )
-
-        # TestResult yangilash
-        test_result.status = 'completed'
-        test_result.score = score
-        test_result.end_time = timezone.now()
-        test_result.save()
-
-        return response.Response({
-            "message": "Speaking test muvaffaqiyatli tekshirildi",
-            "result": result,
-            "score": score
-        })
-    
-############################################################################################################
-    #Test uchun API'lar
 
 class TestRequestApiView(APIView):
     @swagger_auto_schema(
@@ -372,8 +161,223 @@ class TestRequestApiView(APIView):
         
         return Response(test_data)
 
+image_url = "https://a6d9-188-113-246-221.ngrok-free.app/media/writing/example.png"
 
+# OpenAI sozlamalari
+OPENAI_API_KEY = base.OPENAI_API_KEY  # OpenAI API kalitingizni qo‘ying
+client = OpenAI(api_key=OPENAI_API_KEY)
+logger = logging.getLogger(__name__)
 
+class WritingTestCheckApiView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_summary="Writing test javobini tekshirish",
+        operation_description="Foydalanuvchi yuborgan rasmni OpenAI orqali tekshiradi.",
+        request_body=WritingTestCheckSerializer,
+        responses={
+            200: TestCheckResponseSerializer,
+            400: openapi.Response(description="Validation xatosi"),
+            403: openapi.Response(description="TestResult topilmadi yoki faol emas")
+        }
+    )
+    def post(self, request):
+        user = request.user
+
+        # So‘rovni validatsiya qilish
+        serializer = WritingTestCheckSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        test_result_id = serializer.validated_data['test_result_id']
+        question = serializer.validated_data['question']
+        writing_image = serializer.validated_data['writing_image']
+
+        # TestResult ni olish yoki yaratish
+        test_result = get_or_create_test_result(user, test_result_id, question)
+        if isinstance(test_result, Response):
+            return test_result
+
+        # Section turini tekshirish
+        if test_result.section.type != 'writing':
+            return Response({"error": "Bu endpoint faqat writing testlari uchun!"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Rasmni saqlash
+        image_path = os.path.join(settings.MEDIA_ROOT, f"writing_images/{writing_image.name}")
+        os.makedirs(os.path.dirname(image_path), exist_ok=True)
+        with open(image_path, 'wb') as f:
+            for chunk in writing_image.chunks():
+                f.write(chunk)
+
+        # Rasmni matnga aylantirish (OCR)
+        try:
+            with Image.open(image_path) as img:
+                ocr_response = client.chat.completions.create(
+                    model="gpt-4-vision-preview",
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": "Bu rasmda yozilgan matnni o‘qib bering."},
+                                {"type": "image_url", "image_url": {"url": image_url}},
+                            ],
+                        }
+                    ],
+                )
+                processed_answer = ocr_response.choices[0].message.content
+        except Exception as e:
+            logger.error(f"Writing OCR xatosi: {str(e)}")
+            return Response({"error": "Rasmni o‘qishda xatolik yuz berdi!"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # ChatGPT bilan tekshirish
+        prompt = (
+            f"Foydalanuvchi Turk tili multilevel imtihoni uchun writing javobini yubordi: '{processed_answer}'. "
+            "Javobni turk tili grammatikasi va multilevel qoidalariga ko‘ra tekshirib, "
+            "batafsil izoh bilan 0-100 oralig‘ida baho bering."
+        )
+        try:
+            gpt_response = client.chat.completions.create(
+                model="gpt-4",
+                messages=[{"role": "user", "content": prompt}],
+            )
+            result = gpt_response.choices[0].message.content
+            score = int(result.split("Baho:")[-1].strip()) if "Baho:" in result else 50
+            is_correct = score >= 50
+        except Exception as e:
+            logger.error(f"ChatGPT xatosi (writing): {str(e)}")
+            return Response({"error": "Javobni tekshirishda xatolik yuz berdi!"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # Foydalanuvchi javobini saqlash
+        save_user_answer(test_result, question, processed_answer, is_correct)
+
+        # Test natijasini yakunlash
+        final_response = finalize_test_result(test_result, score)
+        final_response.update({
+            "message": "Writing test muvaffaqiyatli tekshirildi",
+            "result": result,
+            "score": score
+        })
+
+        # Javobni serializer orqali formatlash
+        response_serializer = TestCheckResponseSerializer(final_response)
+        return Response(response_serializer.data)
+
+class SpeakingTestCheckApiView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_summary="Speaking test javobini tekshirish",
+        operation_description="Foydalanuvchi yuborgan audioni OpenAI orqali tekshiradi.",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'test_result_id': openapi.Schema(
+                    type=openapi.TYPE_INTEGER,
+                    description='Test natijasi ID si (ixtiyoriy)',
+                    nullable=True
+                ),
+                'question': openapi.Schema(
+                    type=openapi.TYPE_INTEGER,
+                    description='Savol ID si (majburiy)'
+                ),
+                'speaking_audio': openapi.Schema(
+                    type=openapi.TYPE_FILE,
+                    description='Speaking javobi uchun audio fayl (WAV yoki MP3, majburiy)'
+                ),
+            },
+            required=['question', 'speaking_audio'],
+            description="So‘rov `multipart/form-data` formatida bo‘lishi kerak."
+        ),
+        responses={
+            200: TestCheckResponseSerializer,
+            400: openapi.Response(description="Validation xatosi"),
+            403: openapi.Response(description="TestResult topilmadi yoki faol emas")
+        },
+        consumes=['multipart/form-data']  # So‘rov formati
+    )
+    def post(self, request):
+        user = request.user
+
+        # So‘rovda fayl borligini tekshirish
+        if 'speaking_audio' not in request.FILES:
+            return Response(
+                {"speaking_audio": ["Speaking javobi uchun audio fayl yuklanishi kerak!"]},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # So‘rovni validatsiya qilish
+        serializer = SpeakingTestCheckSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        test_result_id = serializer.validated_data['test_result_id']
+        question = serializer.validated_data['question']
+        speaking_audio = serializer.validated_data['speaking_audio']
+
+        # TestResult ni olish yoki yaratish
+        test_result = get_or_create_test_result(user, test_result_id, question)
+        if isinstance(test_result, Response):
+            return test_result
+
+        # Section turini tekshirish
+        if test_result.section.type != 'speaking':
+            return Response({"error": "Bu endpoint faqat speaking testlari uchun!"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Audio faylni saqlash
+        audio_path = os.path.join(settings.MEDIA_ROOT, f"speaking_audios/{speaking_audio.name}")
+        os.makedirs(os.path.dirname(audio_path), exist_ok=True)
+        with open(audio_path, 'wb') as f:
+            for chunk in speaking_audio.chunks():
+                f.write(chunk)
+
+        # Audio faylni matnga aylantirish (Speech-to-Text)
+        recognizer = sr.Recognizer()
+        try:
+            with sr.AudioFile(audio_path) as source:
+                audio = recognizer.record(source)
+                processed_answer = recognizer.recognize_google(audio, language="tr-TR")
+        except Exception as e:
+            logger.error(f"Speaking STT xatosi: {str(e)}")
+            return Response({"error": "Audio o‘qishda xatolik yuz berdi!"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # ChatGPT bilan tekshirish
+        prompt = (
+            f"Foydalanuvchi Turk tili multilevel imtihoni uchun speaking javobini yubordi: '{processed_answer}'. "
+            "Javobni turk tili grammatikasi va multilevel qoidalariga ko‘ra tekshirib, "
+            "batafsil izoh bilan 0-100 oralig‘ida baho bering."
+        )
+        try:
+            gpt_response = client.chat.completions.create(
+                model="gpt-4",
+                messages=[{"role": "user", "content": prompt}],
+            )
+            result = gpt_response.choices[0].message.content
+            score = int(result.split("Baho:")[-1].strip()) if "Baho:" in result else 50
+            is_correct = score >= 50
+        except Exception as e:
+            logger.error(f"ChatGPT xatosi (speaking): {str(e)}")
+            return Response({"error": "Javobni tekshirishda xatolik yuz berdi!"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # Foydalanuvchi javobini saqlash
+        save_user_answer(test_result, question, processed_answer, is_correct)
+
+        # Test natijasini yakunlash
+        final_response = finalize_test_result(test_result, score)
+        final_response.update({
+            "message": "Speaking test muvaffaqiyatli tekshirildi",
+            "result": result,
+            "score": score,
+            "user_answer": processed_answer,
+            "question_text": question.text
+        })
+
+        # Javobni serializer orqali formatlash
+        response_serializer = TestCheckResponseSerializer(final_response)
+        return Response(response_serializer.data)
+    
+#######################
+    
+# multilevel/views.py (davomi)
 class TestCheckApiView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -382,25 +386,8 @@ class TestCheckApiView(APIView):
 
     @swagger_auto_schema(
         operation_summary="Foydalanuvchi javoblarini tekshirish",
-        operation_description="Bitta yoki bir nechta savol uchun javoblarni tekshiradi.",
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                'test_result_id': openapi.Schema(type=openapi.TYPE_INTEGER, description='Test natijasi ID si', nullable=True),
-                'answers': openapi.Schema(
-                    type=openapi.TYPE_ARRAY,
-                    items=openapi.Schema(
-                        type=openapi.TYPE_OBJECT,
-                        properties={
-                            'question': openapi.Schema(type=openapi.TYPE_INTEGER, description='Savol ID si'),
-                            'user_option': openapi.Schema(type=openapi.TYPE_INTEGER, description='Tanlangan variant ID si', nullable=True),
-                            'user_answer': openapi.Schema(type=openapi.TYPE_STRING, description='Foydalanuvchi javobi', nullable=True),
-                        },
-                        required=['question']
-                    )
-                )
-            }
-        ),
+        operation_description="Listening yoki Reading testlari uchun javoblarni tekshiradi.",
+        request_body=BulkTestCheckSerializer,
         responses={
             201: TestCheckSerializer(many=True),
             200: TestCheckSerializer(many=True),
@@ -410,8 +397,7 @@ class TestCheckApiView(APIView):
     )
     def post(self, request, *args, **kwargs):
         user = request.user
-        data = request.data if isinstance(request.data, dict) else {'answers': request.data}
-        serializer = BulkTestCheckSerializer(data=data, context={'request': request})
+        serializer = BulkTestCheckSerializer(data=request.data, context={'request': request})
 
         if not serializer.is_valid():
             return self.handle_error(serializer.errors, status.HTTP_400_BAD_REQUEST)
@@ -424,9 +410,16 @@ class TestCheckApiView(APIView):
         exam = question.test.section.exam
 
         # TestResult ni aniqlash va vaqtni tekshirish
-        current_test_result = self.get_active_test_result(user, test_result_id, question)
+        current_test_result = get_or_create_test_result(user, test_result_id, question)
         if isinstance(current_test_result, Response):
             return current_test_result
+
+        # Writing yoki Speaking bo‘lsa, bu endpoint ishlatilmaydi
+        if current_test_result.section.type in ['writing', 'speaking']:
+            return self.handle_error(
+                "Writing yoki Speaking testlari uchun /testcheck/writing/ yoki /testcheck/speaking/ endpointlaridan foydalaning!",
+                status.HTTP_400_BAD_REQUEST
+            )
 
         # Javoblarni qayta ishlash
         responses = self.process_answers(user, current_test_result, answers_data)
@@ -435,30 +428,6 @@ class TestCheckApiView(APIView):
         final_response = self.finalize_test_result(user, current_test_result, responses)
         status_code = status.HTTP_201_CREATED if any(r.get('is_new') for r in responses) else status.HTTP_200_OK
         return Response(final_response, status=status_code)
-
-    def get_active_test_result(self, user, test_result_id, question):
-        if test_result_id:
-            try:
-                test_result = TestResult.objects.get(id=test_result_id, user_test__user=user, status='started')
-            except TestResult.DoesNotExist:
-                return self.handle_error("Bu ID ga mos faol TestResult mavjud emas", status.HTTP_403_FORBIDDEN)
-        else:
-            test_result = TestResult.objects.filter(
-                user_test__user=user,
-                section=question.test.section,
-                status='started'
-            ).last()
-            if not test_result:
-                return self.handle_error("Ushbu bo‘lim uchun faol test topilmadi!", status.HTTP_400_BAD_REQUEST)
-
-        if test_result.end_time and test_result.end_time < timezone.now():
-            test_result.status = 'completed'
-            test_result.save()
-            test_result.user_test.status = 'completed'
-            test_result.user_test.save()
-            return self.handle_error("Test vaqti tugagan, yangi test so‘rang", status.HTTP_400_BAD_REQUEST)
-
-        return test_result
 
     def process_answers(self, user, test_result, answers_data):
         # Mavjud javoblarni olish

@@ -4,7 +4,7 @@ from django.urls import reverse
 from django.utils.html import format_html
 from .models import ExamPayment
 from payme.models import PaymeTransactions
-# admin.site.unregister(PaymeTransactions)
+
 
 @admin.register(ExamPayment)
 class PaymentAdmin(admin.ModelAdmin):
@@ -15,6 +15,8 @@ class PaymentAdmin(admin.ModelAdmin):
         "amount",
         "is_paid",
         "payment_method",
+        "created_at",
+        "updated_at",
    )
 list_filter = ("is_paid", "payment_method")
 search_fields = ("exam__title", "user__username")

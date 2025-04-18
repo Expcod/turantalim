@@ -1,10 +1,11 @@
 from rest_framework import serializers
-from .models import *
+from .models import Exam, Section, Test, Question, Option, UserTest, TestResult, UserAnswer
 from apps.main.serializers import LanguageSerializer
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from apps.users.models import *
 
+# Asosiy model serializer’lari
 class SectionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Section
@@ -16,6 +17,8 @@ class ExamSerializer(serializers.ModelSerializer):
         fields = ['id', 'title', 'level', 'language']
 
 class TestSerializer(serializers.ModelSerializer):
+    options = serializers.SerializerMethodField()
+
     class Meta:
         model = Test
         fields = '__all__'
@@ -38,7 +41,7 @@ class UserTestSerializer(serializers.ModelSerializer):
         model = UserTest
         fields = '__all__'
 
-# TestResult yaratish uchun serializer (eski nom saqlanadi)
+# TestResult yaratish uchun serializer
 class TestResultCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = TestResult
@@ -56,6 +59,7 @@ class TestResultCreateSerializer(serializers.ModelSerializer):
             user_test_result = TestResult.objects.create(user_test=user_test, status='started')
         return user_test_result
 
+# Multilevel serializer’lari
 class MultilevelOptionSerializer(serializers.ModelSerializer):
     is_selected = serializers.SerializerMethodField()
 
@@ -77,6 +81,14 @@ class MultilevelOptionSerializer(serializers.ModelSerializer):
         return False
 
 class MultilevelQuestionSerializer(serializers.ModelSerializer):
+    options = serializers.SerializerMethodField()
+    user_answer = serializers.SerializerMethodField()
+    picture = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Question
+        fields = ["id", "text", "picture", "has_options", "user_answer", "options"]
+
     def get_options(self, obj):
         return MultilevelOptionSerializer(
             obj.option_set.all(),
@@ -90,14 +102,6 @@ class MultilevelQuestionSerializer(serializers.ModelSerializer):
             return request.build_absolute_uri(obj.picture.url) if request else obj.picture.url
         return None
 
-    options = serializers.SerializerMethodField()
-    user_answer = serializers.SerializerMethodField()
-    picture = serializers.SerializerMethodField()
-
-    class Meta:
-        model = Question
-        fields = ["id", "text", "picture", "has_options", "user_answer", "options"]
-
     def get_user_answer(self, obj):
         test_result = self.context.get('test_result')
         if not test_result:
@@ -109,6 +113,15 @@ class MultilevelQuestionSerializer(serializers.ModelSerializer):
         return user_answer if not obj.has_options else None
 
 class MultilevelTestSerializer(serializers.ModelSerializer):
+    questions = serializers.SerializerMethodField()
+    options = serializers.SerializerMethodField()
+    picture = serializers.SerializerMethodField()
+    audio = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Test
+        fields = ["id", "title", "description", "picture", "audio", "options", "sample", "text_title", "text", "constraints", "questions"]
+
     def get_questions(self, obj):
         return MultilevelQuestionSerializer(
             obj.question_set.all(),
@@ -128,19 +141,19 @@ class MultilevelTestSerializer(serializers.ModelSerializer):
             return request.build_absolute_uri(obj.audio.url) if request else obj.audio.url
         return None
 
-    questions = serializers.SerializerMethodField()
-    options = serializers.SerializerMethodField()
-    picture = serializers.SerializerMethodField()
-    audio = serializers.SerializerMethodField()
-
     def get_options(self, obj):
         return obj.get_options()
 
-    class Meta:
-        model = Test
-        fields = ["id", "title", "description", "picture", "audio", "options", "sample", "text_title", "text", "constraints", "questions"]
-
 class MultilevelSectionSerializer(serializers.ModelSerializer):
+    tests = serializers.SerializerMethodField()
+    language = serializers.SerializerMethodField()
+    level = serializers.SerializerMethodField()
+    exam = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Section
+        fields = ["id", "exam", "type", "language", "title", "description", "tests", "level"]
+
     def get_tests(self, obj):
         return MultilevelTestSerializer(
             obj.test_set.all(),
@@ -149,27 +162,56 @@ class MultilevelSectionSerializer(serializers.ModelSerializer):
         ).data
 
     def get_language(self, obj):
-        # Exam orqali language olish
         if obj.exam and obj.exam.language:
             return LanguageSerializer(obj.exam.language, context=self.context).data
         return None
 
     def get_level(self, obj):
-        # Exam orqali level olish
         return obj.exam.level if obj.exam else None
-    
+
     def get_exam(self, obj):
         return ExamSerializer(obj.exam, context=self.context).data if obj.exam else None
 
-    tests = serializers.SerializerMethodField()
-    language = serializers.SerializerMethodField('get_language')
-    level = serializers.SerializerMethodField('get_level')
-    exam = serializers.SerializerMethodField('get_exam')
+# Writing va Speaking testlari uchun serializer’lar
+class WritingTestCheckSerializer(serializers.Serializer):
+    test_result_id = serializers.IntegerField(required=False, allow_null=True)
+    question = serializers.IntegerField(required=True)
+    writing_image = serializers.FileField(required=True)
 
-    class Meta:
-        model = Section
-        fields = ["id", 'exam',"type", "language", "title", "description", "tests", "level"]
+    def validate_question(self, value):
+        try:
+            question = Question.objects.get(id=value)
+        except Question.DoesNotExist:
+            raise serializers.ValidationError("Savol topilmadi!")
+        return question
 
+    def validate_writing_image(self, value):
+        if value.size > 5 * 1024 * 1024:  # 5MB dan katta bo‘lmasligi kerak
+            raise serializers.ValidationError("Rasm hajmi 5MB dan katta bo‘lmasligi kerak!")
+        if not value.name.lower().endswith(('.png', '.jpg', '.jpeg')):
+            raise serializers.ValidationError("Faqat PNG yoki JPG formatidagi rasmlar qabul qilinadi!")
+        return value
+
+class SpeakingTestCheckSerializer(serializers.Serializer):
+    test_result_id = serializers.IntegerField(required=False, allow_null=True)
+    question = serializers.IntegerField(required=True)
+    speaking_audio = serializers.FileField(required=True)
+
+    def validate_question(self, value):
+        try:
+            question = Question.objects.get(id=value)
+        except Question.DoesNotExist:
+            raise serializers.ValidationError("Savol topilmadi!")
+        return question
+
+    def validate_speaking_audio(self, value):
+        if value.size > 10 * 1024 * 1024:  # 10MB dan katta bo‘lmasligi kerak
+            raise serializers.ValidationError("Audio hajmi 10MB dan katta bo‘lmasligi kerak!")
+        if not value.name.lower().endswith(('.wav', '.mp3')):
+            raise serializers.ValidationError("Faqat WAV yoki MP3 formatidagi audio fayllar qabul qilinadi!")
+        return value
+
+# TestCheckSerializer (Listening va Reading uchun)
 class TestCheckSerializer(serializers.ModelSerializer):
     question = serializers.PrimaryKeyRelatedField(queryset=Question.objects.all())
     user_option = serializers.PrimaryKeyRelatedField(queryset=Option.objects.all(), required=False, allow_null=True)
@@ -178,8 +220,8 @@ class TestCheckSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = UserAnswer
-        fields = ['question', 'user_option', 'user_answer', 'is_correct', 'test_result', 'test_result_id']
-        read_only_fields = ['is_correct', 'test_result']
+        fields = ['id', 'question', 'user_option', 'user_answer', 'is_correct', 'test_result', 'test_result_id']
+        read_only_fields = ['id', 'is_correct', 'test_result']
 
     def get_test_result_id(self, obj):
         return obj.test_result.id if obj.test_result else None
@@ -189,26 +231,35 @@ class TestCheckSerializer(serializers.ModelSerializer):
         user_option = data.get('user_option')
         user_answer = data.get('user_answer')
 
-        if question.has_options and not user_option:
-            raise serializers.ValidationError("Optionli savol uchun variant tanlash kerak.")
+        if question.has_options and user_option is None:
+            raise serializers.ValidationError("Variantli savol uchun user_option kiritilishi shart!")
         if not question.has_options and not user_answer:
-            raise serializers.ValidationError("Optionsiz savol uchun javob kiritish kerak.")
+            raise serializers.ValidationError("Variantsiz savol uchun user_answer kiritilishi shart!")
         return data
 
 class BulkTestCheckSerializer(serializers.Serializer):
     test_result_id = serializers.IntegerField(required=False, allow_null=True)
-    answers = TestCheckSerializer(many=True)
+    answers = serializers.ListField(child=TestCheckSerializer(), min_length=1)
 
     def validate(self, data):
         question_ids = [answer['question'].id for answer in data['answers']]
         if len(question_ids) != len(set(question_ids)):
             raise serializers.ValidationError("Bir xil savol ID si bir nechta kiritilgan.")
         return data
-        
-# TestResult uchun yangi serializerlar
+
+# Writing va Speaking javoblarini formatlash uchun serializer
+class TestCheckResponseSerializer(serializers.Serializer):
+    message = serializers.CharField()
+    result = serializers.CharField()
+    score = serializers.IntegerField()
+    test_completed = serializers.BooleanField()
+    user_answer = serializers.CharField(required=False, allow_null=True)
+    question_text = serializers.CharField(required=False, allow_null=True)
+
+# TestResult serializer’lari
 class TestResultDetailSerializer(serializers.ModelSerializer):
     section = serializers.CharField(source="section.title")
-    language = serializers.CharField(source="language.name", default="Unknown")
+    language = serializers.CharField(source="user_test.exam.language.name", default="Unknown")
     total_questions = serializers.SerializerMethodField()
     correct_answers = serializers.SerializerMethodField()
     incorrect_answers = serializers.SerializerMethodField()
@@ -255,7 +306,7 @@ class TestResultDetailSerializer(serializers.ModelSerializer):
 
 class TestResultListSerializer(serializers.ModelSerializer):
     section = serializers.CharField(source="section.title")
-    language = serializers.CharField(source="language.name", default="Unknown")
+    language = serializers.CharField(source="user_test.exam.language.name", default="Unknown")
     percentage = serializers.SerializerMethodField()
 
     class Meta:
@@ -270,6 +321,8 @@ class TestResultListSerializer(serializers.ModelSerializer):
 class OverallTestResultSerializer(serializers.Serializer):
     listening = serializers.SerializerMethodField()
     reading = serializers.SerializerMethodField()
+    writing = serializers.SerializerMethodField()
+    speaking = serializers.SerializerMethodField()
     overall_percentage = serializers.SerializerMethodField()
     overall_level = serializers.SerializerMethodField()
 
@@ -281,6 +334,18 @@ class OverallTestResultSerializer(serializers.Serializer):
 
     def get_reading(self, obj):
         test_result = TestResult.objects.filter(user_test__user=obj, section__type='reading').last()
+        if test_result:
+            return TestResultDetailSerializer(test_result, context=self.context).data
+        return None
+
+    def get_writing(self, obj):
+        test_result = TestResult.objects.filter(user_test__user=obj, section__type='writing').last()
+        if test_result:
+            return TestResultDetailSerializer(test_result, context=self.context).data
+        return None
+
+    def get_speaking(self, obj):
+        test_result = TestResult.objects.filter(user_test__user=obj, section__type='speaking').last()
         if test_result:
             return TestResultDetailSerializer(test_result, context=self.context).data
         return None

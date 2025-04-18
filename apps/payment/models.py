@@ -12,6 +12,8 @@ class ExamPayment(models.Model):
     amount = models.IntegerField(verbose_name="To‘lov miqdori")
     is_paid = models.BooleanField(default=False, verbose_name="To‘langanmi")
     payment_method = models.CharField(max_length=50, verbose_name="To‘lov usuli", default="payme")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateField(auto_now_add=True)
 
     class Meta:
         verbose_name = "Exam Payment"
