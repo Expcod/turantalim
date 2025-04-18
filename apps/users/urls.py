@@ -12,4 +12,7 @@ urlpatterns = [
     path('profile/', ProfileDetailView.as_view(), name='profile_detail'),
     path('profile/update/', ProfileUpdateView.as_view(), name='profile_update'),
     path('profile/change-password/', ChangePasswordView.as_view(), name='change_password'),
+    path('password/reset/request/', PasswordResetRequestView.as_view(), name='password_reset_request'),
+    path('password/reset/verify/', PasswordResetVerifyView.as_view(), name='password_reset_verify'),
+    path('password/reset/confirm/', PasswordResetConfirmView.as_view(), name='password_reset_confirm'),
 ]

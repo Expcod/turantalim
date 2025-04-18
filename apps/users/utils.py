@@ -1,49 +1,63 @@
-import requests
-import smtplib
-from email.mime.text import MIMEText
+# users/utils.py
+import logging
+import random
+import string
+from django.core.mail import EmailMultiAlternatives
+from django.template.loader import render_to_string
+from django.utils.html import strip_tags
 from django.conf import settings
+import requests
 
-# 1. SMS Yuborish (muloqot uchun API kerak bo‘ladi)
-def send_sms(phone_number, message):
-    API_URL = "https://api.smsprovider.uz/send"  # SMS provider API
-    API_KEY = "SIZNING_API_KALITINGIZ"  # O'zingizning API kalitingizni qo'shing
+logger = logging.getLogger(__name__)
 
-    payload = {
-        "phone": phone_number,
-        "message": message,
-        "key": API_KEY
-    }
+def generate_verification_code(length=6):
+    """6 xonali tasdiqlash kodi generatsiya qilish"""
+    return ''.join(random.choices(string.digits, k=length))
 
-    try:
-        response = requests.post(API_URL, json=payload)
-        if response.status_code == 200:
-            return True
-        else:
-            print(f"SMS yuborishda xatolik: {response.text}")
-            return False
-    except Exception as e:
-        print(f"SMS jo‘natishda xatolik: {str(e)}")
-        return False
-
-# 2. Email Yuborish (SMTP orqali)
-def send_email(to_email, subject, message):
-    SMTP_SERVER = "smtp.gmail.com"
-    SMTP_PORT = 587
-    SMTP_USER = settings.EMAIL_HOST_USER  # Django settings faylidan olamiz
-    SMTP_PASS = settings.EMAIL_HOST_PASSWORD  # Django settings faylidan olamiz
-
-    msg = MIMEText(message, "plain")
-    msg["Subject"] = subject
-    msg["From"] = SMTP_USER
-    msg["To"] = to_email
+def send_verification_email(email, code):
+    """Email orqali tasdiqlash kodi yuborish (HTML formatida)"""
+    subject = "Parolni tiklash uchun tasdiqlash kodi"
+    
+    # HTML shablonidan foydalanish
+    html_content = render_to_string('emails/verification_code.html', {
+        'code': code,
+        'user_email': email,
+        'expiration_minutes': 5
+    })
+    text_content = strip_tags(html_content)  # HTML dan oddiy matn versiyasini olish
 
     try:
-        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
-        server.starttls()
-        server.login(SMTP_USER, SMTP_PASS)
-        server.sendmail(SMTP_USER, to_email, msg.as_string())
-        server.quit()
+        email_message = EmailMultiAlternatives(
+            subject=subject,
+            body=text_content,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            to=[email]
+        )
+        email_message.attach_alternative(html_content, "text/html")
+        email_message.send()
+        logger.info(f"Tasdiqlash kodi email orqali yuborildi: {email}")
         return True
     except Exception as e:
-        print(f"Email jo‘natishda xatolik: {str(e)}")
+        logger.error(f"Email yuborishda xatolik: {email} - {str(e)}")
+        return False
+
+def send_sms_via_eskiz(phone_number, code):
+    """Eskiz orqali SMS yuborish"""
+    url = "https://notify.eskiz.uz/api/message/sms/send"
+    headers = {
+        "Authorization": f"Bearer {settings.ESKIZ_TOKEN}"
+    }
+    data = {
+        "mobile_phone": phone_number,
+        "message": f"Sizning tasdiqlash kodingiz: {code}",
+        "from": "4546",
+        "callback_url": "http://your-api/sms-callback/"
+    }
+    try:
+        response = requests.post(url, headers=headers, data=data)
+        response.raise_for_status()
+        logger.info(f"SMS yuborildi: {phone_number}")
+        return True
+    except requests.RequestException as e:
+        logger.error(f"SMS yuborishda xatolik: {phone_number} - {str(e)}")
         return False

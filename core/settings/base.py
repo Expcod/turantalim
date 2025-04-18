@@ -75,6 +75,28 @@ PAYME_AMOUNT_FIELD = "amount"
 PAYME_ACCOUNT_MODEL = "apps.payment.models.ExamPayment"  
 PAYME_ONE_TIME_PAYMENT = True  
 
+#telegram settings
+TELEGRAM_BOT_TOKEN = env.str("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = env.str("TELEGRAM_CHAT_ID")
+
+#openai settings
+OPENAI_API_KEY = env.str("OPENAI_API_KEY")
+
+# Email sozlamalari (Gmail uchun)
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = 'your-email@gmail.com'  # Sizning Gmail manzilingiz
+EMAIL_HOST_PASSWORD = 'your-app-password'  # Gmail App Password (parol emas, App Password)
+DEFAULT_FROM_EMAIL = 'your-email@gmail.com'
+
+CELERY_BROKER_URL = 'redis://localhost:6379/0'
+CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         # main authenticator must be at the top
