@@ -1,21 +1,10 @@
 from datetime import timezone
 from django.contrib.auth.models import AbstractUser, UserManager as BaseUserManager
-# from django.db import models
 from django.utils.translation import gettext_lazy as _
-
 from apps.common.models import BaseModel
-
 from django.db import models
 from apps.main.models import Language
 from django.core.exceptions import ValidationError
-
-# Create your models here.
-# class User(AbstractUser, BaseModel):
-#     class Meta:
-#         verbose_name = _("User")
-#         verbose_name_plural = _("Users")  
-
-
 
 class Country(models.Model):
     name = models.CharField(max_length=50)
@@ -52,6 +41,33 @@ class CustomUserManager(BaseUserManager):
         if not phone and not email:
             raise ValueError("At least one of phone or email must be set for superuser")
         return self.create_user(phone, email, password, **extra_fields)
+        
+    def authenticate(self, request, phone=None, email=None, password=None, **kwargs):
+        """
+        Telefon raqami yoki email orqali autentifikatsiya
+        """
+        if phone:
+            try:
+                user = self.get_by_natural_key(phone)
+            except self.model.DoesNotExist:
+                return None
+        elif email:
+            try:
+                user = self.model.objects.get(email=email)
+            except self.model.DoesNotExist:
+                return None
+        else:
+            return None
+
+        if user.check_password(password):
+            return user
+        return None
+        
+    def get_by_natural_key(self, username):
+        """
+        Telefon raqami orqali foydalanuvchini topish
+        """
+        return self.get(phone=username)
 
 class User(AbstractUser):
     GENDER_CHOICES = [
@@ -75,7 +91,7 @@ class User(AbstractUser):
     REQUIRED_FIELDS = ["email"]
 
     def clean(self):
-        """Email yoki telefon bo‘lishi shart. Bo‘sh stringlarni (`""`) None qilib saqlaymiz."""
+        """Email yoki telefon bo'lishi shart. Bo'sh stringlarni (`""`) None qilib saqlaymiz."""
         self.phone = self.phone or None
         self.email = getattr(self, 'email', None) or None
         if not self.phone and not self.email:

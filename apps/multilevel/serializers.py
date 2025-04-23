@@ -173,44 +173,32 @@ class MultilevelSectionSerializer(serializers.ModelSerializer):
         return ExamSerializer(obj.exam, context=self.context).data if obj.exam else None
 
 # Writing va Speaking testlari uchun serializer’lar
+# multilevel/serializers.py ga qo'shish kerak
+
 class WritingTestCheckSerializer(serializers.Serializer):
     test_result_id = serializers.IntegerField(required=False, allow_null=True)
-    question = serializers.IntegerField(required=True)
-    writing_image = serializers.FileField(required=True)
-
-    def validate_question(self, value):
-        try:
-            question = Question.objects.get(id=value)
-        except Question.DoesNotExist:
-            raise serializers.ValidationError("Savol topilmadi!")
-        return question
+    question = serializers.PrimaryKeyRelatedField(queryset=Question.objects.all())
+    writing_image = serializers.ImageField(required=True)
 
     def validate_writing_image(self, value):
-        if value.size > 5 * 1024 * 1024:  # 5MB dan katta bo‘lmasligi kerak
-            raise serializers.ValidationError("Rasm hajmi 5MB dan katta bo‘lmasligi kerak!")
+        if value.size > 5 * 1024 * 1024:  # 5MB dan katta bo'lmasligi kerak
+            raise serializers.ValidationError("Rasm hajmi 5MB dan katta bo'lmasligi kerak!")
         if not value.name.lower().endswith(('.png', '.jpg', '.jpeg')):
             raise serializers.ValidationError("Faqat PNG yoki JPG formatidagi rasmlar qabul qilinadi!")
         return value
 
 class SpeakingTestCheckSerializer(serializers.Serializer):
     test_result_id = serializers.IntegerField(required=False, allow_null=True)
-    question = serializers.IntegerField(required=True)
+    question = serializers.PrimaryKeyRelatedField(queryset=Question.objects.all())
     speaking_audio = serializers.FileField(required=True)
 
-    def validate_question(self, value):
-        try:
-            question = Question.objects.get(id=value)
-        except Question.DoesNotExist:
-            raise serializers.ValidationError("Savol topilmadi!")
-        return question
-
     def validate_speaking_audio(self, value):
-        if value.size > 10 * 1024 * 1024:  # 10MB dan katta bo‘lmasligi kerak
-            raise serializers.ValidationError("Audio hajmi 10MB dan katta bo‘lmasligi kerak!")
+        if value.size > 10 * 1024 * 1024:  # 10MB dan katta bo'lmasligi kerak
+            raise serializers.ValidationError("Audio hajmi 10MB dan katta bo'lmasligi kerak!")
         if not value.name.lower().endswith(('.wav', '.mp3')):
             raise serializers.ValidationError("Faqat WAV yoki MP3 formatidagi audio fayllar qabul qilinadi!")
         return value
-
+    
 # TestCheckSerializer (Listening va Reading uchun)
 class TestCheckSerializer(serializers.ModelSerializer):
     question = serializers.PrimaryKeyRelatedField(queryset=Question.objects.all())

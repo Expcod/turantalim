@@ -13,6 +13,8 @@ from .models import *
 from apps.payment.models import *
 from .serializers import *
 from .utils import *
+from django.core.files.storage import FileSystemStorage
+from django.utils import timezone
 
 from core.settings import base
 
@@ -163,8 +165,9 @@ class TestRequestApiView(APIView):
 
 image_url = "https://a6d9-188-113-246-221.ngrok-free.app/media/writing/example.png"
 
+
 # OpenAI sozlamalari
-OPENAI_API_KEY = base.OPENAI_API_KEY  # OpenAI API kalitingizni qo‘ying
+OPENAI_API_KEY = base.OPENAI_API_KEY 
 client = OpenAI(api_key=OPENAI_API_KEY)
 logger = logging.getLogger(__name__)
 
@@ -183,83 +186,92 @@ class WritingTestCheckApiView(APIView):
     )
     def post(self, request):
         user = request.user
-
-        # So‘rovni validatsiya qilish
         serializer = WritingTestCheckSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        test_result_id = serializer.validated_data['test_result_id']
+        test_result_id = serializer.validated_data.get('test_result_id')
         question = serializer.validated_data['question']
         writing_image = serializer.validated_data['writing_image']
 
-        # TestResult ni olish yoki yaratish
         test_result = get_or_create_test_result(user, test_result_id, question)
         if isinstance(test_result, Response):
             return test_result
 
-        # Section turini tekshirish
         if test_result.section.type != 'writing':
             return Response({"error": "Bu endpoint faqat writing testlari uchun!"}, status=status.HTTP_400_BAD_REQUEST)
 
         # Rasmni saqlash
-        image_path = os.path.join(settings.MEDIA_ROOT, f"writing_images/{writing_image.name}")
-        os.makedirs(os.path.dirname(image_path), exist_ok=True)
-        with open(image_path, 'wb') as f:
-            for chunk in writing_image.chunks():
-                f.write(chunk)
+        fs = FileSystemStorage()
+
+        def save_temp_file(file, directory):
+            file_path = os.path.join(directory, file.name)
+            full_path = fs.save(file_path, file)
+            return fs.path(full_path)
+
+        def cleanup_temp_file(file_path):
+            if os.path.exists(file_path):
+                os.remove(file_path)
+
+        # WritingTestCheckApiView ichida:
+        image_path = save_temp_file(writing_image, "writing_images")
+        try:
+            image_url = request.build_absolute_uri(settings.MEDIA_URL + f"writing_images/{writing_image.name}")
+            ocr_response = client.chat.completions.create(
+                model="gpt-4-vision-preview",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "Bu rasmda yozilgan matnni o'qib bering."},
+                            {"type": "image_url", "image_url": {"url": image_url}},
+                        ],
+                    }
+                ],
+            )
+            processed_answer = ocr_response.choices[0].message.content
+        finally:
+            cleanup_temp_file(image_path)
 
         # Rasmni matnga aylantirish (OCR)
         try:
-            with Image.open(image_path) as img:
-                ocr_response = client.chat.completions.create(
-                    model="gpt-4-vision-preview",
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": "Bu rasmda yozilgan matnni o‘qib bering."},
-                                {"type": "image_url", "image_url": {"url": image_url}},
-                            ],
-                        }
-                    ],
-                )
-                processed_answer = ocr_response.choices[0].message.content
+            image_url = request.build_absolute_uri(settings.MEDIA_URL + f"writing_images/{writing_image.name}")
+            ocr_response = client.chat.completions.create(
+                model="gpt-4-vision-preview",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "Bu rasmda yozilgan matnni o'qib bering."},
+                            {"type": "image_url", "image_url": {"url": image_url}},
+                        ],
+                    }
+                ],
+            )
+            processed_answer = ocr_response.choices[0].message.content
         except Exception as e:
             logger.error(f"Writing OCR xatosi: {str(e)}")
-            return Response({"error": "Rasmni o‘qishda xatolik yuz berdi!"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": f"Rasmni o'qishda xatolik yuz berdi: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         # ChatGPT bilan tekshirish
         prompt = (
-            f"Foydalanuvchi Turk tili multilevel imtihoni uchun writing javobini yubordi: '{processed_answer}'. "
-            "Javobni turk tili grammatikasi va multilevel qoidalariga ko‘ra tekshirib, "
-            "batafsil izoh bilan 0-100 oralig‘ida baho bering."
+            f"Foydalanuvchi til imtihoni uchun writing javobini yubordi: '{processed_answer}'. "
+            f"Savol: '{question.text}'. "
+            "Javobni grammatika, so'z boyligi, mazmun va tuzilishi bo'yicha tekshirib, "
+            "batafsil izoh bilan 0-100 oralig'ida baho bering. "
+            "Javobingizni quyidagi formatda bering: "
+            "Izoh: [batafsil izoh]\n"
+            "Baho: [0-100 oralig'ida son]"
         )
+
         try:
-            gpt_response = client.chat.completions.create(
-                model="gpt-4",
-                messages=[{"role": "user", "content": prompt}],
-            )
-            result = gpt_response.choices[0].message.content
-            score = int(result.split("Baho:")[-1].strip()) if "Baho:" in result else 50
-            is_correct = score >= 50
+            final_response = process_test_response(user, test_result, question, processed_answer, prompt, client, logger)
+            final_response["message"] = "Writing test muvaffaqiyatli tekshirildi"
         except Exception as e:
-            logger.error(f"ChatGPT xatosi (writing): {str(e)}")
-            return Response({"error": "Javobni tekshirishda xatolik yuz berdi!"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        # Foydalanuvchi javobini saqlash
-        save_user_answer(test_result, question, processed_answer, is_correct)
-
-        # Test natijasini yakunlash
-        final_response = finalize_test_result(test_result, score)
-        final_response.update({
-            "message": "Writing test muvaffaqiyatli tekshirildi",
-            "result": result,
-            "score": score
-        })
-
-        # Javobni serializer orqali formatlash
-        response_serializer = TestCheckResponseSerializer(final_response)
+        response_serializer = TestCheckResponseSerializer(data=final_response)
+        response_serializer.is_valid(raise_exception=True)
         return Response(response_serializer.data)
 
 class SpeakingTestCheckApiView(APIView):
@@ -268,58 +280,27 @@ class SpeakingTestCheckApiView(APIView):
     @swagger_auto_schema(
         operation_summary="Speaking test javobini tekshirish",
         operation_description="Foydalanuvchi yuborgan audioni OpenAI orqali tekshiradi.",
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                'test_result_id': openapi.Schema(
-                    type=openapi.TYPE_INTEGER,
-                    description='Test natijasi ID si (ixtiyoriy)',
-                    nullable=True
-                ),
-                'question': openapi.Schema(
-                    type=openapi.TYPE_INTEGER,
-                    description='Savol ID si (majburiy)'
-                ),
-                'speaking_audio': openapi.Schema(
-                    type=openapi.TYPE_FILE,
-                    description='Speaking javobi uchun audio fayl (WAV yoki MP3, majburiy)'
-                ),
-            },
-            required=['question', 'speaking_audio'],
-            description="So‘rov `multipart/form-data` formatida bo‘lishi kerak."
-        ),
+        request_body=SpeakingTestCheckSerializer,
         responses={
             200: TestCheckResponseSerializer,
             400: openapi.Response(description="Validation xatosi"),
             403: openapi.Response(description="TestResult topilmadi yoki faol emas")
-        },
-        consumes=['multipart/form-data']  # So‘rov formati
+        }
     )
     def post(self, request):
         user = request.user
-
-        # So‘rovda fayl borligini tekshirish
-        if 'speaking_audio' not in request.FILES:
-            return Response(
-                {"speaking_audio": ["Speaking javobi uchun audio fayl yuklanishi kerak!"]},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # So‘rovni validatsiya qilish
         serializer = SpeakingTestCheckSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        test_result_id = serializer.validated_data['test_result_id']
+        test_result_id = serializer.validated_data.get('test_result_id')
         question = serializer.validated_data['question']
         speaking_audio = serializer.validated_data['speaking_audio']
 
-        # TestResult ni olish yoki yaratish
         test_result = get_or_create_test_result(user, test_result_id, question)
         if isinstance(test_result, Response):
             return test_result
 
-        # Section turini tekshirish
         if test_result.section.type != 'speaking':
             return Response({"error": "Bu endpoint faqat speaking testlari uchun!"}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -331,50 +312,38 @@ class SpeakingTestCheckApiView(APIView):
                 f.write(chunk)
 
         # Audio faylni matnga aylantirish (Speech-to-Text)
-        recognizer = sr.Recognizer()
         try:
+            recognizer = sr.Recognizer()
             with sr.AudioFile(audio_path) as source:
                 audio = recognizer.record(source)
-                processed_answer = recognizer.recognize_google(audio, language="tr-TR")
+                language_code = test_result.section.exam.language.code if test_result.section.exam.language else "tr-TR"
+                processed_answer = recognizer.recognize_google(audio, language=language_code)
         except Exception as e:
             logger.error(f"Speaking STT xatosi: {str(e)}")
-            return Response({"error": "Audio o‘qishda xatolik yuz berdi!"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": f"Audio o'qishda xatolik yuz berdi: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         # ChatGPT bilan tekshirish
         prompt = (
-            f"Foydalanuvchi Turk tili multilevel imtihoni uchun speaking javobini yubordi: '{processed_answer}'. "
-            "Javobni turk tili grammatikasi va multilevel qoidalariga ko‘ra tekshirib, "
-            "batafsil izoh bilan 0-100 oralig‘ida baho bering."
+            f"Foydalanuvchi til imtihoni uchun speaking javobini yubordi: '{processed_answer}'. "
+            f"Savol: '{question.text}'. "
+            "Javobni talaffuz, grammatika, so'z boyligi, mazmun va ravonligi bo'yicha tekshirib, "
+            "batafsil izoh bilan 0-100 oralig'ida baho bering. "
+            "Javobingizni quyidagi formatda bering: "
+            "Izoh: [batafsil izoh]\n"
+            "Baho: [0-100 oralig'ida son]"
         )
+
         try:
-            gpt_response = client.chat.completions.create(
-                model="gpt-4",
-                messages=[{"role": "user", "content": prompt}],
-            )
-            result = gpt_response.choices[0].message.content
-            score = int(result.split("Baho:")[-1].strip()) if "Baho:" in result else 50
-            is_correct = score >= 50
+            final_response = process_test_response(user, test_result, question, processed_answer, prompt, client, logger)
+            final_response["message"] = "Speaking test muvaffaqiyatli tekshirildi"
         except Exception as e:
-            logger.error(f"ChatGPT xatosi (speaking): {str(e)}")
-            return Response({"error": "Javobni tekshirishda xatolik yuz berdi!"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        # Foydalanuvchi javobini saqlash
-        save_user_answer(test_result, question, processed_answer, is_correct)
-
-        # Test natijasini yakunlash
-        final_response = finalize_test_result(test_result, score)
-        final_response.update({
-            "message": "Speaking test muvaffaqiyatli tekshirildi",
-            "result": result,
-            "score": score,
-            "user_answer": processed_answer,
-            "question_text": question.text
-        })
-
-        # Javobni serializer orqali formatlash
-        response_serializer = TestCheckResponseSerializer(final_response)
+        response_serializer = TestCheckResponseSerializer(data=final_response)
+        response_serializer.is_valid(raise_exception=True)
         return Response(response_serializer.data)
-    
+
+
 #######################
     
 # multilevel/views.py (davomi)

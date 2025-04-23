@@ -7,8 +7,8 @@ urlpatterns = [
     
     #Check test
     path('check-test/', TestCheckApiView.as_view(), name='check-test'),
-    path('testcheck/writing/', WritingTestCheckApiView.as_view(), name='writing_test_check'),
-    path('testcheck/speaking/', SpeakingTestCheckApiView.as_view(), name='speaking_test_check'),
+    path('testcheck/writing/', WritingTestCheckApiView.as_view(), name='writing-test-check'),
+    path('testcheck/speaking/', SpeakingTestCheckApiView.as_view(), name='speaking-test-check'),
 
     # Test result
     path('test-result/<int:test_result_id>/', TestResultDetailView.as_view(), name='test-result-detail'),

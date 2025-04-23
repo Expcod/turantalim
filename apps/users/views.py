@@ -11,6 +11,7 @@ from datetime import timedelta
 from .models import User, VerificationCode
 from .serializers import *
 from .utils import generate_verification_code, send_sms_via_eskiz, send_verification_email
+from .tasks import send_verification_email_task, send_sms_task
 
 
 class RegisterAPIView(APIView):
@@ -18,23 +19,41 @@ class RegisterAPIView(APIView):
 
     @swagger_auto_schema(
         request_body=RegistrationSerializer,
-        responses={201: openapi.Response("Foydalanuvchi muvaffaqiyatli ro‘yxatdan o‘tdi.")}
+        responses={201: openapi.Response("Foydalanuvchi muvaffaqiyatli ro'yxatdan o'tdi.")}
     )
     def post(self, request):
         serializer = RegistrationSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
-            return Response({"message": "Foydalanuvchi muvaffaqiyatli ro‘yxatdan o‘tdi."}, status=status.HTTP_201_CREATED)
+            return Response({"message": "Foydalanuvchi muvaffaqiyatli ro'yxatdan o'tdi."}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 # ✅ Token olish (Login)
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
+    
+    @swagger_auto_schema(
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['identifier', 'password'],
+            properties={
+                'identifier': openapi.Schema(type=openapi.TYPE_STRING, description='Telefon raqami yoki email'),
+                'password': openapi.Schema(type=openapi.TYPE_STRING, description='Parol'),
+            }
+        ),
+        responses={
+            200: openapi.Response("Token muvaffaqiyatli olingan"),
+            401: openapi.Response("Autentifikatsiya xatosi")
+        },
+        operation_description="Telefon raqami yoki email orqali login qilish"
+    )
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
 
 
-# ✅ Profil ma’lumotlarini olish
-class ProfileDetailView(generics.RetrieveAPIView):
+# ✅ Profil ma'lumotlarini olish
+class ProfileDetailView(generics.RetrieveUpdateAPIView):  # RetrieveUpdateAPIView ga o'zgartirdik
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated]
 
@@ -43,16 +62,48 @@ class ProfileDetailView(generics.RetrieveAPIView):
             200: UserSerializer,
             404: openapi.Response("Foydalanuvchi topilmadi")
         },
-        operation_description="Foydalanuvchi profilini va multilevel test natijalarini (listening, reading, writing, speaking bo‘limlari bo‘yicha) qaytaradi"
+        operation_description="Foydalanuvchi profilini va multilevel test natijalarini (listening, reading, writing, speaking bo'limlari bo'yicha) qaytaradi"
     )
-    def get_object(self):
-        user = self.request.user
+    def get(self, request, *args, **kwargs):
+        user = self.get_object()
         if not user:
             return Response({"error": "Foydalanuvchi topilmadi!"}, status=status.HTTP_404_NOT_FOUND)
-        return user
+        serializer = self.get_serializer(user)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @swagger_auto_schema(
+        request_body=UserSerializer,
+        responses={
+            200: UserSerializer,
+            400: openapi.Response("Validation xatosi"),
+            404: openapi.Response("Foydalanuvchi topilmadi")
+        },
+        operation_description="Foydalanuvchi profiliga yangi test natijasini qo'shadi"
+    )
+    def put(self, request, *args, **kwargs):
+        user = self.get_object()
+        if not user:
+            return Response({"error": "Foydalanuvchi topilmadi!"}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = self.get_serializer(user, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        # Agar new_test_result maydoni bo'lsa, yangi TestResult yaratamiz
+        if 'new_test_result' in serializer.validated_data:
+            test_result_serializer = TestResultInputSerializer(data=serializer.validated_data['new_test_result'])
+            test_result_serializer.is_valid(raise_exception=True)
+            test_result_serializer.create(user)
+
+        # Yangilangan user ma'lumotlarini qaytarish
+        serializer = self.get_serializer(user)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def get_object(self):
+        return self.request.user
 
 
-# ✅ Profil ma’lumotlarini yangilash
+# ✅ Profil ma'lumotlarini yangilash
 class ProfileUpdateView(generics.UpdateAPIView):
     serializer_class = UserUpdateSerializer
     permission_classes = [IsAuthenticated]
@@ -68,7 +119,7 @@ class ProfileUpdateView(generics.UpdateAPIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-# ✅ Balansni o‘zgartirish
+# ✅ Balansni o'zgartirish
 class ChangeBalanceView(generics.UpdateAPIView):
     serializer_class = ChangeBalanceSerializer
     permission_classes = [IsAuthenticated]
@@ -77,7 +128,7 @@ class ChangeBalanceView(generics.UpdateAPIView):
         return self.request.user
 
 
-# ✅ Parolni o‘zgartirish (foydalanuvchi login qilgan holda)
+# ✅ Parolni o'zgartirish (foydalanuvchi login qilgan holda)
 class ChangePasswordView(generics.UpdateAPIView):
     permission_classes = [IsAuthenticated]
     serializer_class = ChangePasswordSerializer
@@ -96,16 +147,14 @@ class ChangePasswordView(generics.UpdateAPIView):
         new_password = serializer.validated_data['new_password']
 
         if not user.check_password(old_password):
-            return Response({"error": "Eski parol noto‘g‘ri!"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "Eski parol noto'g'ri!"}, status=status.HTTP_400_BAD_REQUEST)
 
         user.set_password(new_password)
         user.save()
-        return Response({"message": "Parol muvaffaqiyatli o‘zgartirildi!"}, status=status.HTTP_200_OK)
+        return Response({"message": "Parol muvaffaqiyatli o'zgartirildi!"}, status=status.HTTP_200_OK)
 
 
-# ✅ Parolni tiklash so‘rovi (SMS yoki Email orqali)
-from .tasks import send_verification_email_task
-
+# ✅ Parolni tiklash so'rovi (SMS yoki Email orqali)
 class PasswordResetRequestView(APIView):
     permission_classes = [AllowAny]
 
@@ -127,12 +176,15 @@ class PasswordResetRequestView(APIView):
             user = User.objects.filter(phone=identifier).first()
         else:
             user = User.objects.filter(email=identifier).first()
+            
+        if not user:
+            return Response({"error": "Foydalanuvchi topilmadi!"}, status=status.HTTP_404_NOT_FOUND)
 
         # Tasdiqlash kodi generatsiya qilish
         code = generate_verification_code()
         expires_at = timezone.now() + timedelta(minutes=5)
 
-        # Eski kodlarni o‘chirish
+        # Eski kodlarni o'chirish
         VerificationCode.objects.filter(user=user, is_used=False).delete()
 
         # Yangi kodni saqlash
@@ -144,10 +196,9 @@ class PasswordResetRequestView(APIView):
 
         # SMS yoki Email orqali yuborish
         if identifier.startswith('+998'):
-            if send_sms_via_eskiz(identifier, code):
-                return Response({"message": "Tasdiqlash kodi SMS orqali yuborildi."}, status=status.HTTP_200_OK)
-            else:
-                return Response({"error": "SMS yuborishda xatolik yuz berdi!"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            # Asinxron SMS yuborish
+            send_sms_task.delay(identifier, code)
+            return Response({"message": "Tasdiqlash kodi SMS orqali yuborildi."}, status=status.HTTP_200_OK)
         else:
             # Asinxron email yuborish
             send_verification_email_task.delay(identifier, code)
@@ -160,7 +211,7 @@ class PasswordResetVerifyView(APIView):
     @swagger_auto_schema(
         request_body=PasswordResetVerifySerializer,
         responses={
-            200: openapi.Response("Tasdiqlash kodi to‘g‘ri."),
+            200: openapi.Response("Tasdiqlash kodi to'g'ri."),
             400: openapi.Response("Validation xatosi")
         }
     )
@@ -169,17 +220,20 @@ class PasswordResetVerifyView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        return Response({"message": "Tasdiqlash kodi to‘g‘ri."}, status=status.HTTP_200_OK)
+        # Serializer validatsiyasi o'tganligi uchun, user va verification_code mavjud
+        verification_code = serializer.validated_data['verification_code']
+        
+        return Response({"message": "Tasdiqlash kodi to'g'ri."}, status=status.HTTP_200_OK)
 
 
-# ✅ Yangi parolni o‘rnatish
+# ✅ Yangi parolni o'rnatish
 class PasswordResetConfirmView(APIView):
     permission_classes = [AllowAny]
 
     @swagger_auto_schema(
         request_body=PasswordResetConfirmSerializer,
         responses={
-            200: openapi.Response("Parol muvaffaqiyatli o‘zgartirildi."),
+            200: openapi.Response("Parol muvaffaqiyatli o'zgartirildi."),
             400: openapi.Response("Validation xatosi")
         }
     )
@@ -196,8 +250,8 @@ class PasswordResetConfirmView(APIView):
         verification_code.is_used = True
         verification_code.save()
 
-        # Yangi parolni o‘rnatish
+        # Yangi parolni o'rnatish
         user.set_password(new_password)
         user.save()
 
-        return Response({"message": "Parol muvaffaqiyatli o‘zgartirildi!"}, status=status.HTTP_200_OK)
+        return Response({"message": "Parol muvaffaqiyatli o'zgartirildi!"}, status=status.HTTP_200_OK)

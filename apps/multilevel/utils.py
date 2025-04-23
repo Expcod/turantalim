@@ -1,4 +1,5 @@
-# multilevel/utils.py
+# multilevel/utils.py ga qo'shish kerak (agar mavjud bo'lmasa)
+
 from django.utils import timezone
 from .models import TestResult, UserAnswer, Question
 from rest_framework.response import Response
@@ -18,16 +19,43 @@ def get_or_create_test_result(user, test_result_id, question):
             status='started'
         ).last()
         if not test_result:
-            return Response({"error": "Ushbu bo‘lim uchun faol test topilmadi!"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "Ushbu bo'lim uchun faol test topilmadi!"}, status=status.HTTP_400_BAD_REQUEST)
 
     if test_result.end_time and test_result.end_time < timezone.now():
         test_result.status = 'completed'
         test_result.save()
         test_result.user_test.status = 'completed'
         test_result.user_test.save()
-        return Response({"error": "Test vaqti tugagan, yangi test so‘rang"}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"error": "Test vaqti tugagan, yangi test so'rang"}, status=status.HTTP_400_BAD_REQUEST)
 
     return test_result
+
+def process_test_response(user, test_result, question, processed_answer, prompt, client, logger):
+    try:
+        gpt_response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}],
+        )
+        result = gpt_response.choices[0].message.content
+
+        score_text = result.split("Baho:")[-1].strip() if "Baho:" in result else "50"
+        score = max(0, min(100, int(''.join(filter(str.isdigit, score_text.split()[0])))))
+        is_correct = score >= 50
+    except Exception as e:
+        logger.error(f"ChatGPT xatosi: {str(e)}")
+        if "rate_limit" in str(e).lower():
+            raise Exception("OpenAI API limiti oshib ketdi, iltimos keyinroq urinib ko‘ring")
+        raise Exception("Tizimda xatolik yuz berdi, iltimos keyinroq urinib ko‘ring")
+
+    save_user_answer(test_result, question, processed_answer, is_correct)
+    final_response = finalize_test_result(test_result, score)
+    final_response.update({
+        "result": result,
+        "score": score,
+        "user_answer": processed_answer,
+        "question_text": question.text
+    })
+    return final_response
 
 def save_user_answer(test_result, question, user_answer, is_correct):
     """Foydalanuvchi javobini saqlash"""

@@ -1,15 +1,15 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import Group
-from apps.users.models import User
+from apps.users.models import User, VerificationCode
 
-# Group modelini admin paneldan o‘chirish
+# Group modelini admin paneldan o'chirish
 admin.site.unregister(Group)
 
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
     fieldsets = (
-        (None, {"fields": ("phone", "password")}),  # Username o‘rniga phone
+        (None, {"fields": ("phone", "password")}),  # Username o'rniga phone
         ("Personal info", {"fields": ("first_name", "last_name", "email", "picture", "gender", "region", "language", "balance")}),
         ("Permissions", {"fields": ("is_active", "is_staff", "is_superuser", "groups", "user_permissions")}),
         ("Important dates", {"fields": ("last_login", "date_joined")}),
@@ -27,3 +27,11 @@ class UserAdmin(BaseUserAdmin):
     search_fields = ("phone", "first_name", "last_name", "email")
     list_filter = ("is_active",)
     ordering = ("-id",)
+
+@admin.register(VerificationCode)
+class VerificationCodeAdmin(admin.ModelAdmin):
+    list_display = ('user', 'code', 'created_at', 'expires_at', 'is_used')
+    list_filter = ('is_used',)
+    search_fields = ('user__phone', 'user__email', 'code')
+    readonly_fields = ('created_at',)
+    ordering = ('-created_at',)
