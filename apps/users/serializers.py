@@ -209,10 +209,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
     def validate_identifier(self, value):
         value = value.strip().replace(" ", "")
-
-        # Telefon raqami yoki email ekanligini aniqlash
         if value.startswith('+998'):
-            # Telefon raqami validatsiyasi
             if value.startswith('+'):
                 value = value[1:]
             if value.startswith('998') and len(value) == 12:
@@ -220,10 +217,8 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             if not value.startswith('+998') or len(value) != 13:
                 raise serializers.ValidationError("Telefon raqami +998 bilan boshlanib, 9 ta raqamdan iborat bo‘lishi kerak!")
         else:
-            # Email validatsiyasi
             if not re.match(r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$', value):
                 raise serializers.ValidationError("Email formati noto‘g‘ri!")
-
         return value
 
     def validate(self, attrs):
@@ -248,10 +243,13 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
         refresh = self.get_token(user)
 
-        attrs['refresh'] = str(refresh)
-        attrs['access'] = str(refresh.access_token)
+        # Faqat kerakli maydonlarni qaytarish
+        response_data = {
+            'refresh': str(refresh),
+            'access': str(refresh.access_token)
+        }
 
-        return attrs
+        return response_data
 
 
 class PasswordResetRequestSerializer(serializers.Serializer):
