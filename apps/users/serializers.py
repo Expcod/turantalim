@@ -200,24 +200,32 @@ class RegistrationSerializer(serializers.ModelSerializer):
 
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
-    username_field = 'identifier'  # phone yoki email uchun umumiy maydon
+    username_field = 'identifier'
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['identifier'] = serializers.CharField(required=True)
-        self.fields.pop('username', None)  # username maydonini olib tashlash
+        self.fields.pop('username', None)
+
+    def validate_identifier(self, value):
+        # Telefon raqamini tozalash va formatni tekshirish
+        value = value.strip().replace(" ", "")  # Bo‘shliqlarni olib tashlash
+        if value.startswith('+'):
+            value = value[1:]  # + belgisini olib tashlash
+        if value.startswith('998') and len(value) == 12:
+            value = f"+{value}"  # +998 qo‘shish
+        if not value.startswith('+998') or len(value) != 13:
+            raise serializers.ValidationError("Telefon raqami +998 bilan boshlanib, 9 ta raqamdan iborat bo‘lishi kerak!")
+        return value
 
     def validate(self, attrs):
         identifier = attrs.get('identifier')
         password = attrs.get('password')
 
         if identifier and password:
-            # Identifier telefon raqami yoki email ekanligini aniqlash
             if identifier.startswith('+998'):
-                # Telefon raqami orqali login
                 user = authenticate(request=self.context.get('request'), phone=identifier, password=password)
             else:
-                # Email orqali login
                 user = authenticate(request=self.context.get('request'), email=identifier, password=password)
 
             if not user:
@@ -236,17 +244,6 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         attrs['access'] = str(refresh.access_token)
 
         return attrs
-
-    @classmethod
-    def get_token(cls, user):
-        token = super().get_token(user)
-        token['phone'] = user.phone
-        token['email'] = user.email
-        token['full_name'] = user.get_full_name()
-        token['balance'] = user.balance
-        token['language'] = user.language.id if user.language else None
-
-        return token
 
 
 class PasswordResetRequestSerializer(serializers.Serializer):

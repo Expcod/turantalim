@@ -68,7 +68,6 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
             f"👤 Foydalanuvchi: {order.user.first_name} {order.user.last_name}\n"
             f"📖 Imtihon: {order.exam.title}\n"
             f"💰 To‘lov summasi: {order.amount} UZS\n"
-            f"🕒 Sana: {order.updated_at.strftime('%Y-%m-%d %H:%M:%S')}"
         )
         self.send_telegram_message(message)
 

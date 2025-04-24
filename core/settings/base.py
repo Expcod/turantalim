@@ -217,3 +217,8 @@ MEDIA_ROOT = BASE_DIR / "media"
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = 'users.User'
+# Custom authentication backends
+AUTHENTICATION_BACKENDS = [
+    'apps.users.backends.CustomAuthBackend',  # Sizning maxsus backend’ingiz
+    'django.contrib.auth.backends.ModelBackend',  # Django’ning standart backend’i
+]

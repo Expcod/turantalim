@@ -1,13 +1,10 @@
-# apps/users/backends.py
-from django.contrib.auth import get_user_model
+# users/auth_backend.py
 from django.contrib.auth.backends import ModelBackend
+from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
 class CustomAuthBackend(ModelBackend):
-    """
-    Telefon raqami yoki email orqali autentifikatsiya qilish uchun backend
-    """
     def authenticate(self, request, phone=None, email=None, password=None, **kwargs):
         if phone:
             try:
