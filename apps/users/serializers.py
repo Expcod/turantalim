@@ -208,14 +208,22 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         self.fields.pop('username', None)
 
     def validate_identifier(self, value):
-        # Telefon raqamini tozalash va formatni tekshirish
-        value = value.strip().replace(" ", "")  # Bo‘shliqlarni olib tashlash
-        if value.startswith('+'):
-            value = value[1:]  # + belgisini olib tashlash
-        if value.startswith('998') and len(value) == 12:
-            value = f"+{value}"  # +998 qo‘shish
-        if not value.startswith('+998') or len(value) != 13:
-            raise serializers.ValidationError("Telefon raqami +998 bilan boshlanib, 9 ta raqamdan iborat bo‘lishi kerak!")
+        value = value.strip().replace(" ", "")
+
+        # Telefon raqami yoki email ekanligini aniqlash
+        if value.startswith('+998'):
+            # Telefon raqami validatsiyasi
+            if value.startswith('+'):
+                value = value[1:]
+            if value.startswith('998') and len(value) == 12:
+                value = f"+{value}"
+            if not value.startswith('+998') or len(value) != 13:
+                raise serializers.ValidationError("Telefon raqami +998 bilan boshlanib, 9 ta raqamdan iborat bo‘lishi kerak!")
+        else:
+            # Email validatsiyasi
+            if not re.match(r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$', value):
+                raise serializers.ValidationError("Email formati noto‘g‘ri!")
+
         return value
 
     def validate(self, attrs):
