@@ -34,7 +34,7 @@ class TestRequestApiView(APIView):
             openapi.Parameter('language', openapi.IN_QUERY, description="Tilni tanlang (Language ID orqali)", type=openapi.TYPE_INTEGER),
             openapi.Parameter('level', openapi.IN_QUERY, description="Test darajasini tanlang!", type=openapi.TYPE_STRING, enum=['A1', 'A2', 'B1', 'B2', 'C1', 'multilevel']),
             openapi.Parameter('test', openapi.IN_QUERY, description="Test turini tanlang: Listening, Writing, Reading, Speaking", type=openapi.TYPE_STRING, enum=['listening', 'writing', 'reading', 'speaking']),
-            openapi.Parameter('exam_id', openapi.IN_QUERY, description="Imtihonni tanlang (Exam ID orqali)", type=openapi.TYPE_INTEGER),  # Yangi parametr
+            openapi.Parameter('exam_id', openapi.IN_QUERY, description="Imtihonni tanlang (Exam ID orqali)", type=openapi.TYPE_INTEGER),
         ],
         responses={200: MultilevelSectionSerializer()},
     )
@@ -42,7 +42,7 @@ class TestRequestApiView(APIView):
         language_id = request.GET.get('language')
         level_choice = request.GET.get('level')
         test_type = request.GET.get('test')
-        exam_id = request.GET.get('exam_id')  # Yangi parametr
+        exam_id = request.GET.get('exam_id')
 
         # Majburiy parametrlarni tekshirish
         if not language_id or not test_type or not level_choice:
@@ -68,7 +68,6 @@ class TestRequestApiView(APIView):
             except Exam.DoesNotExist:
                 return Response({"error": "Tanlangan Exam topilmadi yoki mos emas!"}, status=404)
         else:
-            # Agar exam_id kiritilmagan bo‘lsa, mos Examlarni topish
             exams = Exam.objects.filter(language=language, level=level_choice)
             if not exams.exists():
                 return Response({"error": f"{level_choice} darajasida {language.name} tilida imtihon mavjud emas!"}, status=404)
@@ -77,44 +76,35 @@ class TestRequestApiView(APIView):
                 "exams": [{"id": exam.id, "title": exam.title} for exam in exams]
             }, status=200)
 
-        # To‘lov holatini tekshirish
-        # if not ExamPayment.objects.filter(user=request.user, exam=exam, status='completed').exists():
-        #         return Response({"error": "Bu imtihon uchun to‘lov qilinmagan! Iltimos, avval to‘lov qiling."}, status=403)
-        
-        # Foydalanuvchining hozirgi test_type va exam ga mos faol testini qidirish
-        existing_test = TestResult.objects.filter(
-            user_test__user=request.user,
-            user_test__language=language,
-            section__exam=exam,  # Exam bo‘yicha filtr
-            section__type=test_type,
-            status='started'
-        ).last()
-
-        if existing_test:
-            if existing_test.end_time and existing_test.end_time < timezone.now():
-                existing_test.status = 'completed'
-                existing_test.save()
-                existing_test.user_test.status = 'completed'
-                existing_test.user_test.save()
-            else:
-                # Hozirgi faol testni qaytarish
-                serializer = MultilevelSectionSerializer(
-                    existing_test.section,
-                    context={'test_result': existing_test.pk, 'request': request}
-                )
-                test_data = {
-                    "test_type": test_type,
-                    "duration": existing_test.section.duration,
-                    "part": serializer.data,
-                    "test_result_id": existing_test.id
-                }
-                return Response(test_data)
-
         # Sectionlarni Exam va type bo‘yicha filtr qilish
         all_sections = Section.objects.filter(exam=exam, type=test_type)
         if not all_sections.exists():
             return Response({"error": f"Ushbu imtihonda {test_type} turidagi testlar mavjud emas!"}, status=404)
 
+        # Faol testni tekshirish
+        existing_test = TestResult.objects.filter(
+            user_test__user=request.user,
+            user_test__language=language,
+            section__exam=exam,
+            section__type=test_type,
+            status='started'
+        ).last()
+
+        if existing_test and (not existing_test.end_time or existing_test.end_time >= timezone.now()):
+            # Hozirgi faol testni qaytarish
+            serializer = MultilevelSectionSerializer(
+                existing_test.section,
+                context={'test_result': existing_test.pk, 'request': request}
+            )
+            test_data = {
+                "test_type": test_type,
+                "duration": existing_test.section.duration,
+                "part": serializer.data,
+                "test_result_id": existing_test.id
+            }
+            return Response(test_data)
+
+        # Agar faol test topilmasa yoki vaqti tugagan bo‘lsa, yangi test yaratish
         used_section_ids = TestResult.objects.filter(user_test__user=request.user).values_list('section_id', flat=True).distinct()
         unused_sections = all_sections.exclude(id__in=used_section_ids)
 
@@ -134,12 +124,12 @@ class TestRequestApiView(APIView):
                 end_time=timezone.now() + timedelta(minutes=selected_section.duration)
             )
         else:
-            # Barcha boshqa faol UserTest larni yakunlash
             UserTest.objects.filter(user=request.user, status='started').update(status='completed')
             TestResult.objects.filter(user_test__user=request.user, status='started').update(status='completed')
             
             new_user_test = UserTest.objects.create(
                 user=request.user,
+                exam=exam,
                 language=language,
                 status='started'
             )
@@ -243,9 +233,11 @@ class WritingTestCheckApiView(APIView):
                 f"Savol: '{question.text}'. "
                 "Javobni grammatika, so'z boyligi, mazmun va tuzilishi bo'yicha tekshirib, "
                 "batafsil izoh bilan 0-100 oralig'ida baho bering. "
+                "Agar javob savolga umuman mos kelmasa, 0-20 oralig'ida baho bering va sababini izohda aniq keltiring. "
+                "Izoh bir nechta qator bo‘lishi mumkin, lekin har bir fikrni qisqa va aniq ifodalang. "
                 "Javobingizni quyidagi formatda bering: "
                 "Izoh: [batafsil izoh]\n"
-                "Baho: [0-100 oralig'ida son]"
+                "Baho: [0-100 oralig'ida faqat raqam]"
             )
 
             # Javobni qayta ishlash

@@ -149,7 +149,11 @@ class UserTest(BaseModel):
         verbose_name="To‘lov holati"
     )
     transaction_id = models.CharField(max_length=100, null=True, blank=True, verbose_name="Tranzaksiya ID")  # Payme uchun
-    exam = models.ForeignKey(Exam, on_delete=models.CASCADE, null=True, blank=True, verbose_name="Imtihon")  # Exam bilan bog‘lash
+    exam = models.ForeignKey(Exam, on_delete=models.CASCADE, verbose_name="Imtihon")
+
+    def clean(self):
+        if not self.exam:
+            raise ValidationError("UserTest uchun Exam majburiy bo‘lishi kerak!")
 
     def __str__(self):
         return f"{self.user.get_full_name()} - {self.language}"
@@ -173,6 +177,10 @@ class TestResult(models.Model):
     end_time = models.DateTimeField(null=True, blank=True, verbose_name="Tugash vaqti")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Yaratilgan vaqti")
 
+    def clean(self):
+        if self.user_test.exam != self.section.exam:
+            raise ValidationError("UserTest va Section ning Exam lari mos bo‘lishi kerak!")
+        
     def save(self, *args, **kwargs):
         if self.status == 'started' and not self.start_time:
             self.start_time = timezone.now()
