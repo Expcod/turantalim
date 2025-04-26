@@ -7,8 +7,11 @@ from apps.users.models import *
 import tempfile
 import magic
 import os
+import logging
 
-# Asosiy model serializer’lari
+logger = logging.getLogger(__name__)
+
+# Asosiy model serializer'lari
 class SectionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Section
@@ -62,7 +65,7 @@ class TestResultCreateSerializer(serializers.ModelSerializer):
             user_test_result = TestResult.objects.create(user_test=user_test, status='started')
         return user_test_result
 
-# Multilevel serializer’lari
+# Multilevel serializer'lari
 class MultilevelOptionSerializer(serializers.ModelSerializer):
     is_selected = serializers.SerializerMethodField()
 
@@ -175,7 +178,7 @@ class MultilevelSectionSerializer(serializers.ModelSerializer):
     def get_exam(self, obj):
         return ExamSerializer(obj.exam, context=self.context).data if obj.exam else None
 
-# Writing va Speaking testlari uchun serializer’lar
+# Writing va Speaking testlari uchun serializer'lar
 # multilevel/serializers.py ga qo'shish kerak
 
 class WritingTestCheckSerializer(serializers.Serializer):
@@ -215,8 +218,8 @@ SUPPORTED_AUDIO_FORMATS = {
     'application/ogg': 'ogg',
     'audio/x-flac': 'flac',
     'application/x-flac': 'flac',
-    
 }
+
 class SpeakingTestCheckSerializer(serializers.Serializer):
     test_result_id = serializers.IntegerField(required=False, allow_null=True)
     question = serializers.PrimaryKeyRelatedField(queryset=Question.objects.all())
@@ -227,47 +230,29 @@ class SpeakingTestCheckSerializer(serializers.Serializer):
         if value.size > max_size:
             raise serializers.ValidationError("Fayl hajmi 25 MB dan katta bo'lmasligi kerak!")
         
-    # Extract file extension from the original filename
+        # Fayl kengaytmasini tekshirish
         file_extension = value.name.lower().split('.')[-1] if '.' in value.name else ''
         supported_extensions = list(set(SUPPORTED_AUDIO_FORMATS.values()))
-    
-        with tempfile.NamedTemporaryFile(delete=False) as temp_file:
-            for chunk in value.chunks():
-                temp_file.write(chunk)
-            temp_file_path = temp_file.name
-
+        
+        if file_extension not in supported_extensions:
+            raise serializers.ValidationError(
+                f"Noto'g'ri fayl formati! Qo'llab-quvvatlanadigan formatlar: {', '.join(supported_extensions)}"
+            )
+        
+        # Fayl MIME type ni tekshirish
         try:
-            # Check MIME type
             mime = magic.Magic(mime=True)
-            file_mime_type = mime.from_file(temp_file_path)
+            file_mime = mime.from_buffer(value.read(1024))
+            value.seek(0)  # Reset file pointer
             
-            # Debug information
-            print(f"File MIME type: {file_mime_type}")
-            print(f"File extension: {file_extension}")
-            
-            # First try to validate using MIME type
-            if file_mime_type in SUPPORTED_AUDIO_FORMATS:
-                return value
-            
-            # If MIME type check fails, try using file extension
-            elif file_extension in supported_extensions:
-                print(f"MIME type check failed but extension is valid: {file_extension}")
-                return value
-            
-            # Both checks failed
-            else:
+            if file_mime not in SUPPORTED_AUDIO_FORMATS:
                 raise serializers.ValidationError(
-                    f"Noto'g'ri fayl formati! Qo'llab-quvvatlanadigan formatlar: {supported_extensions}"
+                    f"Noto'g'ri fayl formati! Qo'llab-quvvatlanadigan formatlar: {', '.join(SUPPORTED_AUDIO_FORMATS.keys())}"
                 )
-        except Exception as e:
-            print(f"Error validating audio file: {str(e)}")
-            raise serializers.ValidationError(f"Fayl tekshirishda xato yuz berdi: {str(e)}")
-        finally:
-            if os.path.exists(temp_file_path):
-                try:
-                    os.remove(temp_file_path)
-                except Exception as e:
-                    print(f"Error removing temp file: {str(e)}")  
+        except ImportError:
+            logger.warning("python-magic library not installed, skipping MIME type check")
+        
+        return value
     
 # TestCheckSerializer (Listening va Reading uchun)
 class TestCheckSerializer(serializers.ModelSerializer):
@@ -314,7 +299,7 @@ class TestCheckResponseSerializer(serializers.Serializer):
     user_answer = serializers.CharField(required=False, allow_null=True)
     question_text = serializers.CharField(required=False, allow_null=True)
 
-# TestResult serializer’lari
+# TestResult serializer'lari
 class TestResultDetailSerializer(serializers.ModelSerializer):
     section = serializers.CharField(source="section.title")
     language = serializers.CharField(source="user_test.exam.language.name", default="Unknown")

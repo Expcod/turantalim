@@ -111,7 +111,7 @@ class ExamPaymentAPIView(views.APIView):
             payment_link = payme.initializer.generate_pay_link(
                 id=serializer.data["id"],
                 amount=serializer.data["amount"],
-                return_url="https://uzum.uz"
+                return_url="https://turantalim.vercel.app/"
             )
             result["payment_link"] = payment_link
 

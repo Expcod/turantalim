@@ -32,7 +32,7 @@ import magic
 
 class TestRequestApiView(APIView):
     @swagger_auto_schema(
-        operation_summary="Test so‘rash",
+        operation_summary="Test so'rash",
         manual_parameters=[
             openapi.Parameter('language', openapi.IN_QUERY, description="Tilni tanlang (Language ID orqali)", type=openapi.TYPE_INTEGER),
             openapi.Parameter('level', openapi.IN_QUERY, description="Test darajasini tanlang!", type=openapi.TYPE_STRING, enum=['A1', 'A2', 'B1', 'B2', 'C1', 'multilevel']),
@@ -58,11 +58,11 @@ class TestRequestApiView(APIView):
 
         LEVEL_CHOICES = ['A1', 'A2', 'B1', 'B2', 'C1', 'multilevel']
         if level_choice not in LEVEL_CHOICES:
-            return Response({"error": f"Noto‘g‘ri daraja! Daraja quyidagilardan biri bo‘lishi kerak: {', '.join(LEVEL_CHOICES)}."}, status=400)
+            return Response({"error": f"Noto'g'ri daraja! Daraja quyidagilardan biri bo'lishi kerak: {', '.join(LEVEL_CHOICES)}."}, status=400)
         
         TEST_TYPES = ['listening', 'writing', 'reading', 'speaking']
         if test_type not in TEST_TYPES:
-            return Response({"error": f"Noto‘g‘ri test turi! Test turi quyidagilardan biri bo‘lishi kerak: {', '.join(TEST_TYPES)}."}, status=400)
+            return Response({"error": f"Noto'g'ri test turi! Test turi quyidagilardan biri bo'lishi kerak: {', '.join(TEST_TYPES)}."}, status=400)
 
         # Exam tanlash
         if exam_id:
@@ -79,7 +79,7 @@ class TestRequestApiView(APIView):
                 "exams": [{"id": exam.id, "title": exam.title} for exam in exams]
             }, status=200)
 
-        # Sectionlarni Exam va type bo‘yicha filtr qilish
+        # Sectionlarni Exam va type bo'yicha filtr qilish
         all_sections = Section.objects.filter(exam=exam, type=test_type)
         if not all_sections.exists():
             return Response({"error": f"Ushbu imtihonda {test_type} turidagi testlar mavjud emas!"}, status=404)
@@ -107,7 +107,7 @@ class TestRequestApiView(APIView):
             }
             return Response(test_data)
 
-        # Agar faol test topilmasa yoki vaqti tugagan bo‘lsa, yangi test yaratish
+        # Agar faol test topilmasa yoki vaqti tugagan bo'lsa, yangi test yaratish
         used_section_ids = TestResult.objects.filter(user_test__user=request.user).values_list('section_id', flat=True).distinct()
         unused_sections = all_sections.exclude(id__in=used_section_ids)
 
@@ -204,7 +204,7 @@ class WritingTestCheckApiView(APIView):
             temp_file_path = temp_file.name
 
         try:
-            # Rasmni base64 formatiga o‘tkazish
+            # Rasmni base64 formatiga o'tkazish
             with open(temp_file_path, "rb") as image_file:
                 encoded_image = base64.b64encode(image_file.read()).decode('utf-8')
             image_url = f"data:image/jpeg;base64,{encoded_image}"
@@ -236,7 +236,7 @@ class WritingTestCheckApiView(APIView):
                 "Javobni grammatika, so'z boyligi, mazmun va tuzilishi bo'yicha tekshirib, "
                 "batafsil izoh bilan 0-100 oralig'ida baho bering. "
                 "Agar javob savolga umuman mos kelmasa, 0-20 oralig'ida baho bering va sababini izohda aniq keltiring. "
-                "Izoh bir nechta qator bo‘lishi mumkin, lekin har bir fikrni qisqa va aniq ifodalang. "
+                "Izoh bir nechta qator bo'lishi mumkin, lekin har bir fikrni qisqa va aniq ifodalang. "
                 "Javobingizni quyidagi formatda bering: "
                 "Izoh: [batafsil izoh]\n"
                 "Baho: [0-100 oralig'ida faqat raqam]"
@@ -254,7 +254,7 @@ class WritingTestCheckApiView(APIView):
             logger.error(f"Writing test tekshirishda xato: {str(e)}")
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         finally:
-            # Vaqtincha faylni o‘chirish
+            # Vaqtincha faylni o'chirish
             if os.path.exists(temp_file_path):
                 os.remove(temp_file_path)
 
@@ -294,25 +294,13 @@ class SpeakingTestCheckApiView(APIView):
 
         # Audio faylni vaqtincha saqlash
         temp_file_path = None
-        temp_converted_path = None
         try:
-            with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+            # Save the original file with appropriate extension
+            file_extension = speaking_audio.name.split('.')[-1].lower()
+            with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{file_extension}') as temp_file:
                 for chunk in speaking_audio.chunks():
                     temp_file.write(chunk)
                 temp_file_path = temp_file.name
-
-            # Faylni .wav formatiga konvertatsiya qilish
-            try:
-                audio = AudioSegment.from_file(temp_file_path)
-                temp_converted_path = temp_file_path + '.wav'
-                audio.export(temp_converted_path, format='wav')
-                temp_file_path = temp_converted_path  # Yangi fayl yo‘lini ishlatamiz
-            except Exception as e:
-                logger.error(f"Konvertatsiya xatosi: {str(e)}")
-                return Response(
-                    {"error": f"Faylni konvertatsiya qilishda xato: {str(e)}"},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
 
             # OpenAI Whisper orqali transkripsiya qilish
             language = test_result.section.exam.language
@@ -325,11 +313,20 @@ class SpeakingTestCheckApiView(APIView):
 
             try:
                 with open(temp_file_path, "rb") as audio_file:
-                    transcription = client.audio.transcriptions.create(
-                        model="whisper-1",
-                        file=audio_file,
-                        language=language_code,
-                    )
+                    # Try with language parameter first
+                    try:
+                        transcription = client.audio.transcriptions.create(
+                            model="whisper-1",
+                            file=audio_file,
+                            language=language_code,
+                        )
+                    except OpenAIError as e:
+                        # If language parameter fails, try without it
+                        audio_file.seek(0)  # Reset file pointer
+                        transcription = client.audio.transcriptions.create(
+                            model="whisper-1",
+                            file=audio_file,
+                        )
                 processed_answer = transcription.text
             except OpenAIError as e:
                 logger.error(f"Whisper API xatosi: {str(e)}")
@@ -345,7 +342,7 @@ class SpeakingTestCheckApiView(APIView):
                 "Javobni talaffuz, grammatika, so'z boyligi, mazmun va ravonligi bo'yicha tekshirib, "
                 "batafsil izoh bilan 0-100 oralig'ida baho bering. "
                 "Agar javob savolga umuman mos kelmasa, 0-20 oralig'ida baho bering va sababini izohda aniq keltiring. "
-                "Izoh bir nechta qator bo‘lishi mumkin, lekin har bir fikrni qisqa va aniq ifodalang. "
+                "Izoh bir nechta qator bo'lishi mumkin, lekin har bir fikrni qisqa va aniq ifodalang. "
                 "Javobingizni quyidagi formatda bering: "
                 "Izoh: [batafsil izoh]\n"
                 "Baho: [0-100 oralig'ida faqat raqam]"
@@ -367,12 +364,7 @@ class SpeakingTestCheckApiView(APIView):
                 try:
                     os.remove(temp_file_path)
                 except Exception as e:
-                    logger.warning(f"Vaqtincha faylni o‘chirishda xato: {str(e)}")
-            if temp_converted_path and os.path.exists(temp_converted_path):
-                try:
-                    os.remove(temp_converted_path)
-                except Exception as e:
-                    logger.warning(f"Vaqtincha faylni o‘chirishda xato: {str(e)}")
+                    logger.warning(f"Vaqtincha faylni o'chirishda xato: {str(e)}")
 
 #######################
     
@@ -413,7 +405,7 @@ class TestCheckApiView(APIView):
         if isinstance(current_test_result, Response):
             return current_test_result
 
-        # Writing yoki Speaking bo‘lsa, bu endpoint ishlatilmaydi
+        # Writing yoki Speaking bo'lsa, bu endpoint ishlatilmaydi
         if current_test_result.section.type in ['writing', 'speaking']:
             return self.handle_error(
                 "Writing yoki Speaking testlari uchun /testcheck/writing/ yoki /testcheck/speaking/ endpointlaridan foydalaning!",
@@ -432,7 +424,7 @@ class TestCheckApiView(APIView):
         # Mavjud javoblarni olish
         existing_answers = {ua.question_id: ua for ua in UserAnswer.objects.filter(test_result=test_result)}
         
-        # Yangi va yangilanadigan javoblar uchun ro‘yxatlar
+        # Yangi va yangilanadigan javoblar uchun ro'yxatlar
         new_answers = []
         update_answers = []
 
@@ -441,7 +433,7 @@ class TestCheckApiView(APIView):
             user_option = answer_data.get('user_option')
             user_answer = answer_data.get('user_answer')
 
-            # To‘g‘ri javobni aniqlash
+            # To'g'ri javobni aniqlash
             is_correct = False
             if question.has_options:
                 correct_option = Option.objects.filter(question=question, is_correct=True).first()
@@ -519,7 +511,7 @@ class TestResultDetailView(APIView):
 
     @extend_schema(
         summary="Muayyan test natijasini batafsil olish",
-        description="Foydalanuvchining muayyan TestResult ID bo‘yicha natijasini qaytaradi: to‘g‘ri/xato javoblar, foiz va daraja.",
+        description="Foydalanuvchining muayyan TestResult ID bo'yicha natijasini qaytaradi: to'g'ri/xato javoblar, foiz va daraja.",
         responses={200: TestResultDetailSerializer(), 404: "Test natijasi topilmadi"}
     )
     def get(self, request, test_result_id):
@@ -532,14 +524,14 @@ class TestResultDetailView(APIView):
         serializer = TestResultDetailSerializer(test_result, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-# TestResult ro‘yxati
+# TestResult ro'yxati
 class TestResultListView(APIView):
     permission_classes = [IsAuthenticated]
     pagination_class = PageNumberPagination
 
     @extend_schema(
-        summary="Foydalanuvchining barcha test natijalari ro‘yxatini olish",
-        description="Foydalanuvchining barcha test natijalarini qisqacha ko‘rsatadi (section, language, status, percentage), pagination bilan.",
+        summary="Foydalanuvchining barcha test natijalari ro'yxatini olish",
+        description="Foydalanuvchining barcha test natijalarini qisqacha ko'rsatadi (section, language, status, percentage), pagination bilan.",
         responses={200: TestResultListSerializer(many=True)}
     )
     def get(self, request):
@@ -561,7 +553,7 @@ class OverallTestResultView(APIView):
 
     @extend_schema(
         summary="Foydalanuvchining umumiy test natijasini olish",
-        description="Listening va Reading bo‘limlari bo‘yicha natijalarni va umumiy foiz hamda Multilevel darajasini qaytaradi.",
+        description="Listening va Reading bo'limlari bo'yicha natijalarni va umumiy foiz hamda Multilevel darajasini qaytaradi.",
         responses={200: OverallTestResultSerializer()}
     )
     def get(self, request):
