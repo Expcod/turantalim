@@ -4,6 +4,9 @@ from apps.main.serializers import LanguageSerializer
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from apps.users.models import *
+import tempfile
+import magic
+import os
 
 # Asosiy model serializer’lari
 class SectionSerializer(serializers.ModelSerializer):
@@ -187,17 +190,84 @@ class WritingTestCheckSerializer(serializers.Serializer):
             raise serializers.ValidationError("Faqat PNG yoki JPG formatidagi rasmlar qabul qilinadi!")
         return value
 
+SUPPORTED_AUDIO_FORMATS = {
+    'audio/flac': 'flac',
+    'audio/aac': 'm4a',
+    'audio/x-m4a': 'm4a',
+    'audio/mpeg': 'mp3',
+    'audio/mp4': 'mp4',
+    'audio/ogg': 'ogg',
+    'audio/wav': 'wav',
+    'audio/x-wav': 'wav',
+    'audio/webm': 'webm',
+    'video/mp4': 'mp4',
+    'audio/mp3': 'mp3',
+    'audio/x-mpeg': 'mp3',
+    'audio/x-mp3': 'mp3',
+    'audio/x-mpg': 'mp3',
+    'audio/x-mpeg-3': 'mp3',
+    'video/x-mp4': 'mp4',
+    'video/3gpp': '3gp',
+    'audio/vnd.wave': 'wav',
+    'audio/wave': 'wav',
+    'audio/x-pn-wav': 'wav',
+    'audio/vorbis': 'ogg',
+    'application/ogg': 'ogg',
+    'audio/x-flac': 'flac',
+    'application/x-flac': 'flac',
+    
+}
 class SpeakingTestCheckSerializer(serializers.Serializer):
     test_result_id = serializers.IntegerField(required=False, allow_null=True)
     question = serializers.PrimaryKeyRelatedField(queryset=Question.objects.all())
     speaking_audio = serializers.FileField(required=True)
 
     def validate_speaking_audio(self, value):
-        if value.size > 10 * 1024 * 1024:  # 10MB dan katta bo'lmasligi kerak
-            raise serializers.ValidationError("Audio hajmi 10MB dan katta bo'lmasligi kerak!")
-        if not value.name.lower().endswith(('.wav', '.mp3')):
-            raise serializers.ValidationError("Faqat WAV yoki MP3 formatidagi audio fayllar qabul qilinadi!")
-        return value
+        max_size = 25 * 1024 * 1024  # 25 MB (Whisper API limit)
+        if value.size > max_size:
+            raise serializers.ValidationError("Fayl hajmi 25 MB dan katta bo'lmasligi kerak!")
+        
+    # Extract file extension from the original filename
+        file_extension = value.name.lower().split('.')[-1] if '.' in value.name else ''
+        supported_extensions = list(set(SUPPORTED_AUDIO_FORMATS.values()))
+    
+        with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+            for chunk in value.chunks():
+                temp_file.write(chunk)
+            temp_file_path = temp_file.name
+
+        try:
+            # Check MIME type
+            mime = magic.Magic(mime=True)
+            file_mime_type = mime.from_file(temp_file_path)
+            
+            # Debug information
+            print(f"File MIME type: {file_mime_type}")
+            print(f"File extension: {file_extension}")
+            
+            # First try to validate using MIME type
+            if file_mime_type in SUPPORTED_AUDIO_FORMATS:
+                return value
+            
+            # If MIME type check fails, try using file extension
+            elif file_extension in supported_extensions:
+                print(f"MIME type check failed but extension is valid: {file_extension}")
+                return value
+            
+            # Both checks failed
+            else:
+                raise serializers.ValidationError(
+                    f"Noto'g'ri fayl formati! Qo'llab-quvvatlanadigan formatlar: {supported_extensions}"
+                )
+        except Exception as e:
+            print(f"Error validating audio file: {str(e)}")
+            raise serializers.ValidationError(f"Fayl tekshirishda xato yuz berdi: {str(e)}")
+        finally:
+            if os.path.exists(temp_file_path):
+                try:
+                    os.remove(temp_file_path)
+                except Exception as e:
+                    print(f"Error removing temp file: {str(e)}")  
     
 # TestCheckSerializer (Listening va Reading uchun)
 class TestCheckSerializer(serializers.ModelSerializer):

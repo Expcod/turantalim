@@ -16,7 +16,8 @@ from .serializers import *
 from .utils import *
 from django.core.files.storage import FileSystemStorage
 from django.utils import timezone
-
+from pydub import AudioSegment
+from openai import OpenAI, OpenAIError
 from core.settings import base
 
 import os
@@ -26,6 +27,8 @@ from openai import OpenAI
 from PIL import Image
 import speech_recognition as sr
 import logging
+import magic
+
 
 class TestRequestApiView(APIView):
     @swagger_auto_schema(
@@ -155,7 +158,6 @@ class TestRequestApiView(APIView):
         
         return Response(test_data)
 
-image_url = "https://a6d9-188-113-246-221.ngrok-free.app/media/writing/example.png"
 
 
 # OpenAI sozlamalari
@@ -261,18 +263,20 @@ class SpeakingTestCheckApiView(APIView):
 
     @swagger_auto_schema(
         operation_summary="Speaking test javobini tekshirish",
-        operation_description="Foydalanuvchi yuborgan audioni OpenAI orqali tekshiradi.",
+        operation_description="Foydalanuvchi yuborgan audioni OpenAI Whisper orqali tekshiradi.",
         request_body=SpeakingTestCheckSerializer,
         responses={
             200: TestCheckResponseSerializer,
             400: openapi.Response(description="Validation xatosi"),
-            403: openapi.Response(description="TestResult topilmadi yoki faol emas")
+            403: openapi.Response(description="TestResult topilmadi yoki faol emas"),
+            500: openapi.Response(description="Server xatosi")
         }
     )
     def post(self, request):
         user = request.user
         serializer = SpeakingTestCheckSerializer(data=request.data)
         if not serializer.is_valid():
+            logger.error(f"Serializer validation error: {serializer.errors}")
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         test_result_id = serializer.validated_data.get('test_result_id')
@@ -282,37 +286,69 @@ class SpeakingTestCheckApiView(APIView):
         # TestResult ni tekshirish
         test_result = get_or_create_test_result(user, test_result_id, question)
         if isinstance(test_result, Response):
+            logger.warning(f"get_or_create_test_result failed: {test_result.data}")
             return test_result
 
         if test_result.section.type != 'speaking':
             return Response({"error": "Bu endpoint faqat speaking testlari uchun!"}, status=status.HTTP_400_BAD_REQUEST)
 
         # Audio faylni vaqtincha saqlash
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_file:
-            for chunk in speaking_audio.chunks():
-                temp_file.write(chunk)
-            temp_file_path = temp_file.name
-
+        temp_file_path = None
+        temp_converted_path = None
         try:
-            # OpenAI Whisper orqali Speech-to-Text
-            language_code = test_result.section.exam.language.code if test_result.section.exam.language else "tr-TR"
-            with open(temp_file_path, "rb") as audio_file:
-                transcription = client.audio.transcriptions.create(
-                    model="whisper-1",
-                    file=audio_file,
-                    language=language_code.split("-")[0],  # "tr-TR" dan "tr" ni olish
-                )
-            processed_answer = transcription.text
+            with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+                for chunk in speaking_audio.chunks():
+                    temp_file.write(chunk)
+                temp_file_path = temp_file.name
 
-            # OpenAI bilan tekshirish
+            # Faylni .wav formatiga konvertatsiya qilish
+            try:
+                audio = AudioSegment.from_file(temp_file_path)
+                temp_converted_path = temp_file_path + '.wav'
+                audio.export(temp_converted_path, format='wav')
+                temp_file_path = temp_converted_path  # Yangi fayl yo‘lini ishlatamiz
+            except Exception as e:
+                logger.error(f"Konvertatsiya xatosi: {str(e)}")
+                return Response(
+                    {"error": f"Faylni konvertatsiya qilishda xato: {str(e)}"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # OpenAI Whisper orqali transkripsiya qilish
+            language = test_result.section.exam.language
+            language_code_map = {
+                "English": "en",
+                "Turkish": "tr",
+                "Uzbek": "uz",
+            }
+            language_code = language_code_map.get(language.name, "tr") if language else "tr"
+
+            try:
+                with open(temp_file_path, "rb") as audio_file:
+                    transcription = client.audio.transcriptions.create(
+                        model="whisper-1",
+                        file=audio_file,
+                        language=language_code,
+                    )
+                processed_answer = transcription.text
+            except OpenAIError as e:
+                logger.error(f"Whisper API xatosi: {str(e)}")
+                return Response(
+                    {"error": f"Whisper API xatosi: {str(e)}"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # OpenAI bilan tekshirish uchun prompt
             prompt = (
                 f"Foydalanuvchi til imtihoni uchun speaking javobini yubordi: '{processed_answer}'. "
                 f"Savol: '{question.text}'. "
                 "Javobni talaffuz, grammatika, so'z boyligi, mazmun va ravonligi bo'yicha tekshirib, "
                 "batafsil izoh bilan 0-100 oralig'ida baho bering. "
+                "Agar javob savolga umuman mos kelmasa, 0-20 oralig'ida baho bering va sababini izohda aniq keltiring. "
+                "Izoh bir nechta qator bo‘lishi mumkin, lekin har bir fikrni qisqa va aniq ifodalang. "
                 "Javobingizni quyidagi formatda bering: "
                 "Izoh: [batafsil izoh]\n"
-                "Baho: [0-100 oralig'ida son]"
+                "Baho: [0-100 oralig'ida faqat raqam]"
             )
 
             # Javobni qayta ishlash
@@ -327,10 +363,16 @@ class SpeakingTestCheckApiView(APIView):
             logger.error(f"Speaking test tekshirishda xato: {str(e)}")
             return Response({"error": f"Audio o'qishda xatolik yuz berdi: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         finally:
-            # Vaqtincha faylni o‘chirish
-            if os.path.exists(temp_file_path):
-                os.remove(temp_file_path)
-
+            if temp_file_path and os.path.exists(temp_file_path):
+                try:
+                    os.remove(temp_file_path)
+                except Exception as e:
+                    logger.warning(f"Vaqtincha faylni o‘chirishda xato: {str(e)}")
+            if temp_converted_path and os.path.exists(temp_converted_path):
+                try:
+                    os.remove(temp_converted_path)
+                except Exception as e:
+                    logger.warning(f"Vaqtincha faylni o‘chirishda xato: {str(e)}")
 
 #######################
     

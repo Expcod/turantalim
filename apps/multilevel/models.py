@@ -149,7 +149,7 @@ class UserTest(BaseModel):
         verbose_name="To‘lov holati"
     )
     transaction_id = models.CharField(max_length=100, null=True, blank=True, verbose_name="Tranzaksiya ID")  # Payme uchun
-    exam = models.ForeignKey(Exam, on_delete=models.CASCADE, verbose_name="Imtihon")
+    exam = models.ForeignKey(Exam, on_delete=models.CASCADE, verbose_name="Imtihon", null=False )
 
     def clean(self):
         if not self.exam:
