@@ -203,6 +203,7 @@ SUPPORTED_AUDIO_FORMATS = {
     'audio/wav': 'wav',
     'audio/x-wav': 'wav',
     'audio/webm': 'webm',
+    'video/webm': 'webm',
     'video/mp4': 'mp4',
     'audio/mp3': 'mp3',
     'audio/x-mpeg': 'mp3',
