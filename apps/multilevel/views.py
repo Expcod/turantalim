@@ -28,7 +28,7 @@ from PIL import Image
 import speech_recognition as sr
 import logging
 import magic
-
+from django.db.models import Avg
 
 class TestRequestApiView(APIView):
     @swagger_auto_schema(
@@ -79,70 +79,83 @@ class TestRequestApiView(APIView):
                 "exams": [{"id": exam.id, "title": exam.title} for exam in exams]
             }, status=200)
 
-        # Sectionlarni Exam va type bo'yicha filtr qilish
+        # Faol testni tekshirish
+        existing_user_test = UserTest.objects.filter(
+            user=request.user,
+            language=language,
+            exam=exam,
+            status='started'
+        ).last()
+
+        if existing_user_test:
+            # Mavjud UserTest topildi, shu bilan davom etamiz
+            existing_test_result = TestResult.objects.filter(
+                user_test=existing_user_test,
+                status='started'
+            ).last()
+
+            if existing_test_result:
+                # Hozirgi faol TestResult mavjud, undan foydalanamiz
+                section = existing_test_result.section
+                # Agar test_type mos kelmasa, yangi section tanlaymiz
+                if section.type != test_type:
+                    all_sections = Section.objects.filter(exam=exam, type=test_type)
+                    if not all_sections.exists():
+                        return Response({"error": f"Ushbu imtihonda {test_type} turidagi testlar mavjud emas!"}, status=404)
+
+                    used_section_ids = TestResult.objects.filter(user_test=existing_user_test).values_list('section_id', flat=True).distinct()
+                    unused_sections = all_sections.exclude(id__in=used_section_ids)
+
+                    if unused_sections.exists():
+                        selected_section = choice(unused_sections)
+                    else:
+                        selected_section = choice(all_sections)
+
+                    # Yangi TestResult yaratmaymiz, faqat section ni yangilaymiz
+                    existing_test_result.section = selected_section
+                    existing_test_result.save()
+                    section = selected_section
+
+                serializer = MultilevelSectionSerializer(
+                    section,
+                    context={'test_result': existing_test_result.pk, 'request': request}
+                )
+                test_data = {
+                    "test_type": test_type,
+                    "duration": section.duration,
+                    "part": serializer.data,
+                    "test_result_id": existing_test_result.id
+                }
+                return Response(test_data)
+
+        # Agar faol test topilmasa, yangi test yaratamiz
+        # Barcha eski faol testlarni yakunlash
+        UserTest.objects.filter(user=request.user, status='started').update(status='completed')
+        TestResult.objects.filter(user_test__user=request.user, status='started').update(status='completed')
+
+        # Yangi UserTest yaratish
+        new_user_test = UserTest.objects.create(
+            user=request.user,
+            exam=exam,
+            language=language,
+            status='started'
+        )
+
+        # Test turi bo'yicha section tanlash
         all_sections = Section.objects.filter(exam=exam, type=test_type)
         if not all_sections.exists():
             return Response({"error": f"Ushbu imtihonda {test_type} turidagi testlar mavjud emas!"}, status=404)
 
-        # Faol testni tekshirish
-        existing_test = TestResult.objects.filter(
-            user_test__user=request.user,
-            user_test__language=language,
-            section__exam=exam,
-            section__type=test_type,
-            status='started'
-        ).last()
+        selected_section = choice(all_sections)
 
-        if existing_test and (not existing_test.end_time or existing_test.end_time >= timezone.now()):
-            # Hozirgi faol testni qaytarish
-            serializer = MultilevelSectionSerializer(
-                existing_test.section,
-                context={'test_result': existing_test.pk, 'request': request}
-            )
-            test_data = {
-                "test_type": test_type,
-                "duration": existing_test.section.duration,
-                "part": serializer.data,
-                "test_result_id": existing_test.id
-            }
-            return Response(test_data)
-
-        # Agar faol test topilmasa yoki vaqti tugagan bo'lsa, yangi test yaratish
-        used_section_ids = TestResult.objects.filter(user_test__user=request.user).values_list('section_id', flat=True).distinct()
-        unused_sections = all_sections.exclude(id__in=used_section_ids)
-
-        if unused_sections.exists():
-            selected_section = choice(unused_sections)
-        else:
-            selected_section = choice(all_sections)
-
-        # Yangi test yaratish va boshqa faol testlarni yakunlash
-        last_user_test = UserTest.objects.filter(user=request.user, language=language, status='started').last()
-        if last_user_test:
-            new_test_result = TestResult.objects.create(
-                user_test=last_user_test,
-                section=selected_section,
-                status='started',
-                start_time=timezone.now(),
-                end_time=timezone.now() + timedelta(minutes=selected_section.duration)
-            )
-        else:
-            UserTest.objects.filter(user=request.user, status='started').update(status='completed')
-            TestResult.objects.filter(user_test__user=request.user, status='started').update(status='completed')
-            
-            new_user_test = UserTest.objects.create(
-                user=request.user,
-                exam=exam,
-                language=language,
-                status='started'
-            )
-            new_test_result = TestResult.objects.create(
-                user_test=new_user_test,
-                section=selected_section,
-                status='started',
-                start_time=timezone.now(),
-                end_time=timezone.now() + timedelta(minutes=selected_section.duration)
-            )
+        # Bitta TestResult yaratish
+        new_test_result = TestResult.objects.create(
+            user_test=new_user_test,
+            section=selected_section,
+            status='started',
+            start_time=timezone.now(),
+            end_time=timezone.now() + timedelta(minutes=selected_section.duration)
+        )
 
         serializer = MultilevelSectionSerializer(
             selected_section,
@@ -157,8 +170,6 @@ class TestRequestApiView(APIView):
         }
         
         return Response(test_data)
-
-
 
 # OpenAI sozlamalari
 OPENAI_API_KEY = base.OPENAI_API_KEY 
@@ -189,9 +200,10 @@ class WritingTestCheckApiView(APIView):
         writing_image = serializer.validated_data['writing_image']
 
         # TestResult ni tekshirish
-        test_result = get_or_create_test_result(user, test_result_id, question)
-        if isinstance(test_result, Response):
-            return test_result
+        try:
+            test_result = TestResult.objects.get(id=test_result_id, user_test__user=user, status='started')
+        except TestResult.DoesNotExist:
+            return Response({"error": "TestResult topilmadi yoki faol emas!"}, status=status.HTTP_403_FORBIDDEN)
 
         if test_result.section.type != 'writing':
             return Response({"error": "Bu endpoint faqat writing testlari uchun!"}, status=status.HTTP_400_BAD_REQUEST)
@@ -212,7 +224,7 @@ class WritingTestCheckApiView(APIView):
             # OpenAI orqali OCR
             try:
                 ocr_response = client.chat.completions.create(
-                    model="gpt-4o",  # Yangi model
+                    model="gpt-4o",
                     messages=[
                         {
                             "role": "user",
@@ -246,6 +258,16 @@ class WritingTestCheckApiView(APIView):
             final_response = process_test_response(user, test_result, question, processed_answer, prompt, client, logger)
             final_response["message"] = "Writing test muvaffaqiyatli tekshirildi"
 
+            # Writing bo'limi uchun alohida score saqlash
+            UserAnswer.objects.create(
+                test_result=test_result,
+                question=question,
+                user_answer=processed_answer
+            )
+
+            # Barcha bo'limlar tugaganligini tekshirish
+            self.finalize_multilevel_test(user, test_result)
+
             response_serializer = TestCheckResponseSerializer(data=final_response)
             response_serializer.is_valid(raise_exception=True)
             return Response(response_serializer.data, status=status.HTTP_200_OK)
@@ -254,121 +276,263 @@ class WritingTestCheckApiView(APIView):
             logger.error(f"Writing test tekshirishda xato: {str(e)}")
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         finally:
-            # Vaqtincha faylni o'chirish
             if os.path.exists(temp_file_path):
                 os.remove(temp_file_path)
+
+    def finalize_multilevel_test(self, user, test_result):
+        user_test = test_result.user_test
+        all_sections = Section.objects.filter(exam=user_test.exam)
+        answered_sections = TestResult.objects.filter(user_test=user_test).distinct()
+
+        # Har bir section turini tekshirish
+        required_types = ['listening', 'reading', 'writing', 'speaking']
+        answered_types = [tr.section.type for tr in answered_sections]
+
+        if all(section_type in answered_types for section_type in required_types):
+            # Barcha bo'limlar javob berilgan, testni yakunlaymiz
+            total_score = 0
+            section_count = 0
+
+            for section in all_sections:
+                tr = TestResult.objects.filter(user_test=user_test, section=section).last()
+                if tr:
+                    section_score = UserAnswer.objects.filter(test_result=tr).aggregate(Avg('score'))['score__avg'] or 0
+                    total_score += section_score
+                    section_count += 1
+
+            final_score = round(total_score / section_count) if section_count > 0 else 0
+            test_result.score = final_score
+            test_result.status = 'completed'
+            test_result.end_time = timezone.now()
+            test_result.save()
+
+            user_test.score = final_score
+            user_test.status = 'completed'
+            user_test.save()
 
 class SpeakingTestCheckApiView(APIView):
     permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
-        operation_summary="Speaking test javobini tekshirish",
-        operation_description="Foydalanuvchi yuborgan audioni OpenAI Whisper orqali tekshiradi.",
-        request_body=SpeakingTestCheckSerializer,
+        operation_summary="Speaking test javoblarini tekshirish",
+        operation_description="Foydalanuvchi yuborgan bir nechta audiolarni OpenAI Whisper orqali tekshiradi.",
+        request_body=BulkSpeakingTestCheckSerializer,
         responses={
-            200: TestCheckResponseSerializer,
+            200: SpeakingTestResponseSerializer,
             400: openapi.Response(description="Validation xatosi"),
             403: openapi.Response(description="TestResult topilmadi yoki faol emas"),
             500: openapi.Response(description="Server xatosi")
         }
     )
     def post(self, request):
-        user = request.user
-        serializer = SpeakingTestCheckSerializer(data=request.data)
+        # Custom parse for bulk form-data
+        if request.content_type and request.content_type.startswith('multipart/form-data'):
+            answers = []
+            i = 0
+            while True:
+                q_key = f'answers[{i}][question]'
+                f_key = f'answers[{i}][speaking_audio]'
+                if q_key in request.data and f_key in request.FILES:
+                    answers.append({
+                        'question': request.data[q_key],
+                        'speaking_audio': request.FILES[f_key]
+                    })
+                    i += 1
+                else:
+                    break
+            data = {
+                'test_result_id': request.data.get('test_result_id'),
+                'answers': answers
+            }
+        else:
+            data = request.data
+
+        logger.debug(f"Received request data: {data}")
+        serializer = BulkSpeakingTestCheckSerializer(data=data)
         if not serializer.is_valid():
             logger.error(f"Serializer validation error: {serializer.errors}")
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         test_result_id = serializer.validated_data.get('test_result_id')
-        question = serializer.validated_data['question']
-        speaking_audio = serializer.validated_data['speaking_audio']
+        answers_data = serializer.validated_data['answers']
 
         # TestResult ni tekshirish
-        test_result = get_or_create_test_result(user, test_result_id, question)
-        if isinstance(test_result, Response):
-            logger.warning(f"get_or_create_test_result failed: {test_result.data}")
-            return test_result
+        try:
+            test_result = TestResult.objects.get(id=test_result_id, user_test__user=request.user, status='started')
+        except TestResult.DoesNotExist:
+            return Response({"error": "TestResult topilmadi yoki faol emas!"}, status=status.HTTP_403_FORBIDDEN)
 
         if test_result.section.type != 'speaking':
             return Response({"error": "Bu endpoint faqat speaking testlari uchun!"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Audio faylni vaqtincha saqlash
-        temp_file_path = None
-        try:
-            # Save the original file with appropriate extension
-            file_extension = speaking_audio.name.split('.')[-1].lower()
-            with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{file_extension}') as temp_file:
-                for chunk in speaking_audio.chunks():
-                    temp_file.write(chunk)
-                temp_file_path = temp_file.name
+        # Javoblarni qayta ishlash
+        responses = self.process_answers(request.user, test_result, answers_data)
 
-            # OpenAI Whisper orqali transkripsiya qilish
-            language = test_result.section.exam.language
-            language_code_map = {
-                "English": "en",
-                "Turkish": "tr",
-                "Uzbek": "uz",
-            }
-            language_code = language_code_map.get(language.name, "tr") if language else "tr"
+        # Testni yakunlash
+        final_response = self.finalize_test(request.user, test_result, responses)
+        return Response(final_response, status=status.HTTP_200_OK)
 
+    def process_answers(self, user, test_result, answers_data):
+        # Mavjud javoblarni olish
+        existing_answers = {ua.question_id: ua for ua in UserAnswer.objects.filter(test_result=test_result)}
+        
+        # Yangi va yangilanadigan javoblar uchun ro'yxatlar
+        new_answers = []
+        responses = []
+
+        language = test_result.section.exam.language
+        language_code_map = {
+            "English": "en",
+            "Turkish": "tr",
+            "Uzbek": "uz",
+        }
+        language_code = language_code_map.get(language.name, "tr") if language else "tr"
+
+        for answer_data in answers_data:
+            question = answer_data['question']
+            speaking_audio = answer_data['speaking_audio']
+
+            # Audio faylni vaqtincha saqlash
+            temp_file_path = None
             try:
-                with open(temp_file_path, "rb") as audio_file:
-                    # Try with language parameter first
-                    try:
-                        transcription = client.audio.transcriptions.create(
-                            model="whisper-1",
-                            file=audio_file,
-                            language=language_code,
-                        )
-                    except OpenAIError as e:
-                        # If language parameter fails, try without it
-                        audio_file.seek(0)  # Reset file pointer
-                        transcription = client.audio.transcriptions.create(
-                            model="whisper-1",
-                            file=audio_file,
-                        )
-                processed_answer = transcription.text
-            except OpenAIError as e:
-                logger.error(f"Whisper API xatosi: {str(e)}")
-                return Response(
-                    {"error": f"Whisper API xatosi: {str(e)}"},
-                    status=status.HTTP_400_BAD_REQUEST
+                file_extension = speaking_audio.name.split('.')[-1].lower()
+                with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{file_extension}') as temp_file:
+                    for chunk in speaking_audio.chunks():
+                        temp_file.write(chunk)
+                    temp_file_path = temp_file.name
+
+                # OpenAI Whisper orqali transkripsiya qilish
+                try:
+                    with open(temp_file_path, "rb") as audio_file:
+                        try:
+                            transcription = client.audio.transcriptions.create(
+                                model="whisper-1",
+                                file=audio_file,
+                                language=language_code,
+                            )
+                        except OpenAIError as e:
+                            audio_file.seek(0)
+                            transcription = client.audio.transcriptions.create(
+                                model="whisper-1",
+                                file=audio_file,
+                            )
+                    processed_answer = transcription.text
+                except OpenAIError as e:
+                    logger.error(f"Whisper API xatosi: {str(e)}")
+                    responses.append({
+                        "message": f"Whisper API xatosi: {str(e)}",
+                        "result": "Transkripsiya qilinmadi",
+                        "score": 0,
+                        "test_completed": False,
+                        "user_answer": "",
+                        "question_text": question.text
+                    })
+                    continue
+
+                # OpenAI bilan tekshirish uchun prompt
+                prompt = (
+                    f"Foydalanuvchi til imtihoni uchun speaking javobini yubordi: '{processed_answer}'. "
+                    f"Savol: '{question.text}'. "
+                    "Javobni talaffuz, grammatika, so'z boyligi, mazmun va ravonligi bo'yicha tekshirib, "
+                    "batafsil izoh bilan 0-100 oralig'ida baho bering. "
+                    "Agar javob savolga umuman mos kelmasa, 0-20 oralig'ida baho bering va sababini izohda aniq keltiring. "
+                    "Izoh bir nechta qator bo'lishi mumkin, lekin har bir fikrni qisqa va aniq ifodalang. "
+                    "Javobingizni quyidagi formatda bering: "
+                    "Izoh: [batafsil izoh]\n"
+                    "Baho: [0-100 oralig'ida faqat raqam]"
                 )
 
-            # OpenAI bilan tekshirish uchun prompt
-            prompt = (
-                f"Foydalanuvchi til imtihoni uchun speaking javobini yubordi: '{processed_answer}'. "
-                f"Savol: '{question.text}'. "
-                "Javobni talaffuz, grammatika, so'z boyligi, mazmun va ravonligi bo'yicha tekshirib, "
-                "batafsil izoh bilan 0-100 oralig'ida baho bering. "
-                "Agar javob savolga umuman mos kelmasa, 0-20 oralig'ida baho bering va sababini izohda aniq keltiring. "
-                "Izoh bir nechta qator bo'lishi mumkin, lekin har bir fikrni qisqa va aniq ifodalang. "
-                "Javobingizni quyidagi formatda bering: "
-                "Izoh: [batafsil izoh]\n"
-                "Baho: [0-100 oralig'ida faqat raqam]"
-            )
+                # Javobni qayta ishlash
+                final_response = process_test_response(user, test_result, question, processed_answer, prompt, client, logger)
+                final_response["message"] = f"Savol {question.id} uchun speaking test muvaffaqiyatli tekshirildi"
 
-            # Javobni qayta ishlash
-            final_response = process_test_response(user, test_result, question, processed_answer, prompt, client, logger)
-            final_response["message"] = "Speaking test muvaffaqiyatli tekshirildi"
+                # Speaking bo'limi uchun alohida javob saqlash
+                existing_answer = existing_answers.get(question.id)
+                if existing_answer:
+                    existing_answer.user_answer = processed_answer
+                    existing_answer.save()
+                else:
+                    new_answer = UserAnswer(
+                        test_result=test_result,
+                        question=question,
+                        user_answer=processed_answer
+                    )
+                    new_answers.append(new_answer)
 
-            response_serializer = TestCheckResponseSerializer(data=final_response)
-            response_serializer.is_valid(raise_exception=True)
-            return Response(response_serializer.data, status=status.HTTP_200_OK)
+                responses.append(final_response)
 
-        except Exception as e:
-            logger.error(f"Speaking test tekshirishda xato: {str(e)}")
-            return Response({"error": f"Audio o'qishda xatolik yuz berdi: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        finally:
-            if temp_file_path and os.path.exists(temp_file_path):
-                try:
-                    os.remove(temp_file_path)
-                except Exception as e:
-                    logger.warning(f"Vaqtincha faylni o'chirishda xato: {str(e)}")
+            except Exception as e:
+                logger.error(f"Speaking test tekshirishda xato: {str(e)}")
+                responses.append({
+                    "message": f"Audio o'qishda xatolik yuz berdi: {str(e)}",
+                    "result": "Tekshirilmadi",
+                    "score": 0,
+                    "test_completed": False,
+                    "user_answer": "",
+                    "question_text": question.text
+                })
+            finally:
+                if temp_file_path and os.path.exists(temp_file_path):
+                    try:
+                        os.remove(temp_file_path)
+                    except Exception as e:
+                        logger.warning(f"Vaqtincha faylni o'chirishda xato: {str(e)}")
 
-#######################
-    
-# multilevel/views.py (davomi)
+        # Yangi javoblarni saqlash
+        if new_answers:
+            UserAnswer.objects.bulk_create(new_answers)
+
+        return responses
+
+    def finalize_test(self, user, test_result, responses):
+        total_questions = Question.objects.filter(test__section=test_result.section).count()
+        answered_questions = UserAnswer.objects.filter(test_result=test_result).count()
+
+        if total_questions == answered_questions:
+            # Barcha savollar javob berilgan, speaking bo'limi uchun umumiy score hisoblaymiz
+            section_score = UserAnswer.objects.filter(test_result=test_result).aggregate(Avg('score'))['score__avg'] or 0
+
+            # Barcha bo'limlar tugaganligini tekshirish
+            user_test = test_result.user_test
+            all_sections = Section.objects.filter(exam=user_test.exam)
+            answered_sections = TestResult.objects.filter(user_test=user_test).distinct()
+
+            required_types = ['listening', 'reading', 'writing', 'speaking']
+            answered_types = [tr.section.type for tr in answered_sections]
+
+            if all(section_type in answered_types for section_type in required_types):
+                # Barcha bo'limlar javob berilgan, testni yakunlaymiz
+                total_score = 0
+                section_count = 0
+
+                for section in all_sections:
+                    tr = TestResult.objects.filter(user_test=user_test, section=section).last()
+                    if tr:
+                        section_score = UserAnswer.objects.filter(test_result=tr).aggregate(Avg('score'))['score__avg'] or 0
+                        total_score += section_score
+                        section_count += 1
+
+                final_score = round(total_score / section_count) if section_count > 0 else 0
+                test_result.score = final_score
+                test_result.status = 'completed'
+                test_result.end_time = timezone.now()
+                test_result.save()
+
+                user_test.score = final_score
+                user_test.status = 'completed'
+                user_test.save()
+
+                return {
+                    "answers": responses,
+                    "test_completed": True,
+                    "score": round(section_score)
+                }
+
+        return {
+            "answers": responses,
+            "test_completed": False
+        }
+
 class TestCheckApiView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -400,31 +564,30 @@ class TestCheckApiView(APIView):
         question = answers_data[0]['question']
         exam = question.test.section.exam
 
-        # TestResult ni aniqlash va vaqtni tekshirish
-        current_test_result = get_or_create_test_result(user, test_result_id, question)
-        if isinstance(current_test_result, Response):
-            return current_test_result
+        # TestResult ni aniqlash
+        try:
+            test_result = TestResult.objects.get(id=test_result_id, user_test__user=user, status='started')
+        except TestResult.DoesNotExist:
+            return self.handle_error("TestResult topilmadi yoki faol emas!", status.HTTP_403_FORBIDDEN)
 
         # Writing yoki Speaking bo'lsa, bu endpoint ishlatilmaydi
-        if current_test_result.section.type in ['writing', 'speaking']:
+        if test_result.section.type in ['writing', 'speaking']:
             return self.handle_error(
                 "Writing yoki Speaking testlari uchun /testcheck/writing/ yoki /testcheck/speaking/ endpointlaridan foydalaning!",
                 status.HTTP_400_BAD_REQUEST
             )
 
         # Javoblarni qayta ishlash
-        responses = self.process_answers(user, current_test_result, answers_data)
+        responses = self.process_answers(user, test_result, answers_data)
 
         # Testni yakunlash
-        final_response = self.finalize_test_result(user, current_test_result, responses)
+        final_response = self.finalize_test(user, test_result, responses)
         status_code = status.HTTP_201_CREATED if any(r.get('is_new') for r in responses) else status.HTTP_200_OK
         return Response(final_response, status=status_code)
 
     def process_answers(self, user, test_result, answers_data):
-        # Mavjud javoblarni olish
         existing_answers = {ua.question_id: ua for ua in UserAnswer.objects.filter(test_result=test_result)}
         
-        # Yangi va yangilanadigan javoblar uchun ro'yxatlar
         new_answers = []
         update_answers = []
 
@@ -433,7 +596,6 @@ class TestCheckApiView(APIView):
             user_option = answer_data.get('user_option')
             user_answer = answer_data.get('user_answer')
 
-            # To'g'ri javobni aniqlash
             is_correct = False
             if question.has_options:
                 correct_option = Option.objects.filter(question=question, is_correct=True).first()
@@ -444,7 +606,6 @@ class TestCheckApiView(APIView):
                     if user_answer and question.answer else False
                 )
 
-            # Mavjud javobni yangilash yoki yangi javob yaratish
             existing_answer = existing_answers.get(question.id)
             if existing_answer:
                 existing_answer.user_option = user_option
@@ -461,13 +622,11 @@ class TestCheckApiView(APIView):
                 )
                 new_answers.append(new_answer)
 
-        # Bulk operatsiyalar
         if new_answers:
             UserAnswer.objects.bulk_create(new_answers)
         if update_answers:
             UserAnswer.objects.bulk_update(update_answers, ['user_option', 'user_answer', 'is_correct'])
 
-        # Javoblar uchun serializer tayyorlash
         all_answers = UserAnswer.objects.filter(
             test_result=test_result,
             question__in=[answer_data['question'] for answer_data in answers_data]
@@ -480,7 +639,7 @@ class TestCheckApiView(APIView):
 
         return responses
 
-    def finalize_test_result(self, user, test_result, responses):
+    def finalize_test(self, user, test_result, responses):
         response_data = [r["data"] for r in responses]
         total_questions = Question.objects.filter(test__section=test_result.section).count()
         answered_questions = UserAnswer.objects.filter(test_result=test_result).count()
@@ -489,14 +648,36 @@ class TestCheckApiView(APIView):
             correct_count = UserAnswer.objects.filter(test_result=test_result, is_correct=True).count()
             score = (correct_count / total_questions * 100) if total_questions > 0 else 0
 
-            test_result.score = round(score)
-            test_result.status = 'completed'
-            test_result.end_time = timezone.now()
-            test_result.save()
+            UserAnswer.objects.filter(test_result=test_result).update(score=score)
 
-            test_result.user_test.score = round(score)
-            test_result.user_test.status = 'completed'
-            test_result.user_test.save()
+            # Barcha bo'limlar tugaganligini tekshirish
+            user_test = test_result.user_test
+            all_sections = Section.objects.filter(exam=user_test.exam)
+            answered_sections = TestResult.objects.filter(user_test=user_test).distinct()
+
+            required_types = ['listening', 'reading', 'writing', 'speaking']
+            answered_types = [tr.section.type for tr in answered_sections]
+
+            if all(section_type in answered_types for section_type in required_types):
+                total_score = 0
+                section_count = 0
+
+                for section in all_sections:
+                    tr = TestResult.objects.filter(user_test=user_test, section=section).last()
+                    if tr:
+                        section_score = UserAnswer.objects.filter(test_result=tr).aggregate(Avg('score'))['score__avg'] or 0
+                        total_score += section_score
+                        section_count += 1
+
+                final_score = round(total_score / section_count) if section_count > 0 else 0
+                test_result.score = final_score
+                test_result.status = 'completed'
+                test_result.end_time = timezone.now()
+                test_result.save()
+
+                user_test.score = final_score
+                user_test.status = 'completed'
+                user_test.save()
 
             return {
                 "answers": response_data,
@@ -505,7 +686,6 @@ class TestCheckApiView(APIView):
             }
         return {"answers": response_data}
 
-# TestResult uchun batafsil natija
 class TestResultDetailView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -524,7 +704,6 @@ class TestResultDetailView(APIView):
         serializer = TestResultDetailSerializer(test_result, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-# TestResult ro'yxati
 class TestResultListView(APIView):
     permission_classes = [IsAuthenticated]
     pagination_class = PageNumberPagination
@@ -547,7 +726,6 @@ class TestResultListView(APIView):
         serializer = TestResultListSerializer(results, many=True, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-# Umumiy TestResult
 class OverallTestResultView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -560,3 +738,4 @@ class OverallTestResultView(APIView):
         user = request.user
         serializer = OverallTestResultSerializer(user, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
+    

@@ -8,6 +8,7 @@ import tempfile
 import magic
 import os
 import logging
+from django.db.models import Avg
 
 logger = logging.getLogger(__name__)
 
@@ -179,8 +180,6 @@ class MultilevelSectionSerializer(serializers.ModelSerializer):
         return ExamSerializer(obj.exam, context=self.context).data if obj.exam else None
 
 # Writing va Speaking testlari uchun serializer'lar
-# multilevel/serializers.py ga qo'shish kerak
-
 class WritingTestCheckSerializer(serializers.Serializer):
     test_result_id = serializers.IntegerField(required=False, allow_null=True)
     question = serializers.PrimaryKeyRelatedField(queryset=Question.objects.all())
@@ -221,10 +220,21 @@ SUPPORTED_AUDIO_FORMATS = {
     'application/x-flac': 'flac',
 }
 
-class SpeakingTestCheckSerializer(serializers.Serializer):
-    test_result_id = serializers.IntegerField(required=False, allow_null=True)
-    question = serializers.PrimaryKeyRelatedField(queryset=Question.objects.all())
-    speaking_audio = serializers.FileField(required=True)
+class SpeakingTestAnswerSerializer(serializers.Serializer):
+    question = serializers.PrimaryKeyRelatedField(
+        queryset=Question.objects.all(),
+        error_messages={
+            'required': 'Savol ID’si kiritilishi shart!',
+            'does_not_exist': 'Berilgan ID’ga mos savol topilmadi!',
+            'invalid': 'Savol ID’si noto‘g‘ri formatda!'
+        }
+    )
+    speaking_audio = serializers.FileField(
+        error_messages={
+            'required': 'Audio fayl yuklanishi shart!',
+            'invalid': 'Yuklanayotgan fayl audio fayl bo‘lishi kerak!'
+        }
+    )
 
     def validate_speaking_audio(self, value):
         max_size = 25 * 1024 * 1024  # 25 MB (Whisper API limit)
@@ -254,7 +264,26 @@ class SpeakingTestCheckSerializer(serializers.Serializer):
             logger.warning("python-magic library not installed, skipping MIME type check")
         
         return value
-    
+
+class BulkSpeakingTestCheckSerializer(serializers.Serializer):
+    test_result_id = serializers.IntegerField(required=False, allow_null=True)
+    answers = serializers.ListField(
+        child=SpeakingTestAnswerSerializer(),
+        min_length=1,
+        error_messages={
+            'required': 'Kamida bitta javob kiritilishi shart!',
+            'min_length': 'Kamida bitta javob kiritilishi shart!'
+        }
+    )
+
+    def validate(self, data):
+        if 'answers' not in data:
+            raise serializers.ValidationError("Answers maydoni kiritilishi shart!")
+        question_ids = [answer['question'].id for answer in data['answers']]
+        if len(question_ids) != len(set(question_ids)):
+            raise serializers.ValidationError("Bir xil savol ID’si bir nechta kiritilgan.")
+        return data
+
 # TestCheckSerializer (Listening va Reading uchun)
 class TestCheckSerializer(serializers.ModelSerializer):
     question = serializers.PrimaryKeyRelatedField(queryset=Question.objects.all())
@@ -299,6 +328,11 @@ class TestCheckResponseSerializer(serializers.Serializer):
     test_completed = serializers.BooleanField()
     user_answer = serializers.CharField(required=False, allow_null=True)
     question_text = serializers.CharField(required=False, allow_null=True)
+
+class SpeakingTestResponseSerializer(serializers.Serializer):
+    answers = serializers.ListField(child=TestCheckResponseSerializer())
+    test_completed = serializers.BooleanField()
+    score = serializers.IntegerField(required=False, allow_null=True)
 
 # TestResult serializer'lari
 class TestResultDetailSerializer(serializers.ModelSerializer):
