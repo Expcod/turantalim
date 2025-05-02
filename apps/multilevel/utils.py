@@ -58,18 +58,18 @@ def process_test_response(user, test_result, question, processed_answer, prompt,
         # Izoh va bahoni ajratish
         lines = reply_text.split("\n")
         
-        # Izoh qismini yig'ish
+        # Izoh qismini yig‘ish
         comment_lines = []
         score_line = None
         for line in lines:
             if line.startswith("Baho:"):
                 score_line = line
                 break
-            if line.strip():  # Bo'sh qatorlarni o'tkazib yuboramiz
+            if line.strip():  # Bo‘sh qatorlarni o‘tkazib yuboramiz
                 comment_lines.append(line.replace("Izoh: ", "").strip())
         
         if not score_line:
-            logger.warning(f"Bahoni ajratib bo'lmadi: {reply_text}, qatorlar: {lines}")
+            logger.warning(f"Bahoni ajratib bo‘lmadi: {reply_text}, qatorlar: {lines}")
             score = 0
         else:
             # Bahodan faqat raqamni olish
@@ -78,26 +78,25 @@ def process_test_response(user, test_result, question, processed_answer, prompt,
                 score = int(score_match.group())
                 score = max(0, min(100, score))
             else:
-                logger.warning(f"Bahoni ajratib bo'lmadi: {reply_text}")
+                logger.warning(f"Bahoni ajratib bo‘lmadi: {reply_text}")
                 score = 0
 
         comment = " ".join(comment_lines)  # Izohlarni birlashtirish
 
         # TestResult ni yangilash
-        if test_result is not None:
-            test_result.score = round(score)
-            test_result.status = 'completed'
-            test_result.end_time = timezone.now()
-            test_result.save()
+        test_result.score = round(score)
+        test_result.status = 'completed'
+        test_result.end_time = timezone.now()
+        test_result.save()
 
-            # UserTest uchun umumiy score ni yangilash
-            user_test = test_result.user_test
-            all_test_results = TestResult.objects.filter(user_test=user_test, status='completed')
-            if all_test_results.exists():
-                total_score = sum(tr.score for tr in all_test_results) / all_test_results.count()
-                user_test.score = round(total_score)
-                user_test.status = 'completed' if all_test_results.count() == Section.objects.filter(exam=user_test.exam).count() else 'started'
-                user_test.save()
+        # UserTest uchun umumiy score ni yangilash
+        user_test = test_result.user_test
+        all_test_results = TestResult.objects.filter(user_test=user_test, status='completed')
+        if all_test_results.exists():
+            total_score = sum(tr.score for tr in all_test_results) / all_test_results.count()
+            user_test.score = round(total_score)
+            user_test.status = 'completed' if all_test_results.count() == Section.objects.filter(exam=user_test.exam).count() else 'started'
+            user_test.save()
 
         return {
             "score": score,
@@ -129,7 +128,7 @@ def process_test_response(user, test_result, question, processed_answer, prompt,
         logger.error(f"OpenAI API limiti oshib ketdi: {str(e)}")
         return {
             "score": 0,
-            "result": "OpenAI API limiti oshib ketdi, iltimos keyinroq urinib ko'ring",
+            "result": "OpenAI API limiti oshib ketdi, iltimos keyinroq urinib ko‘ring",
             "test_completed": False,
             "user_answer": processed_answer,
             "question_text": question.text,
@@ -138,7 +137,7 @@ def process_test_response(user, test_result, question, processed_answer, prompt,
         logger.error(f"OpenAI javobini qayta ishlashda xato: {str(e)}")
         return {
             "score": 0,
-            "result": "Tizimda xatolik yuz berdi, iltimos keyinroq urinib ko'ring",
+            "result": "Tizimda xatolik yuz berdi, iltimos keyinroq urinib ko‘ring",
             "test_completed": False,
             "user_answer": processed_answer,
             "question_text": question.text,

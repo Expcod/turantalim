@@ -182,7 +182,7 @@ class PasswordResetRequestView(APIView):
 
         # Tasdiqlash kodi generatsiya qilish
         code = generate_verification_code()
-        expires_at = timezone.now() + timedelta(minutes=5)
+        expires_at = timezone.now() + timedelta(minutes=3)
 
         # Eski kodlarni o'chirish
         VerificationCode.objects.filter(user=user, is_used=False).delete()

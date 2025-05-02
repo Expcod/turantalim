@@ -224,15 +224,15 @@ class SpeakingTestAnswerSerializer(serializers.Serializer):
     question = serializers.PrimaryKeyRelatedField(
         queryset=Question.objects.all(),
         error_messages={
-            'required': "Savol ID'si kiritilishi shart!",
-            'does_not_exist': "Berilgan ID'ga mos savol topilmadi!",
-            'invalid': "Savol ID'si noto'g'ri formatda!"
+            'required': 'Savol ID’si kiritilishi shart!',
+            'does_not_exist': 'Berilgan ID’ga mos savol topilmadi!',
+            'invalid': 'Savol ID’si noto‘g‘ri formatda!'
         }
     )
     speaking_audio = serializers.FileField(
         error_messages={
-            'required': "Audio fayl yuklanishi shart!",
-            'invalid': "Yuklanayotgan fayl audio fayl bo'lishi kerak!"
+            'required': 'Audio fayl yuklanishi shart!',
+            'invalid': 'Yuklanayotgan fayl audio fayl bo‘lishi kerak!'
         }
     )
 
@@ -271,8 +271,8 @@ class BulkSpeakingTestCheckSerializer(serializers.Serializer):
         child=SpeakingTestAnswerSerializer(),
         min_length=1,
         error_messages={
-            'required': "Kamida bitta javob kiritilishi shart!",
-            'min_length': "Kamida bitta javob kiritilishi shart!"
+            'required': 'Kamida bitta javob kiritilishi shart!',
+            'min_length': 'Kamida bitta javob kiritilishi shart!'
         }
     )
 
@@ -281,7 +281,7 @@ class BulkSpeakingTestCheckSerializer(serializers.Serializer):
             raise serializers.ValidationError("Answers maydoni kiritilishi shart!")
         question_ids = [answer['question'].id for answer in data['answers']]
         if len(question_ids) != len(set(question_ids)):
-            raise serializers.ValidationError("Bir xil savol ID'si bir nechta kiritilgan.")
+            raise serializers.ValidationError("Bir xil savol ID’si bir nechta kiritilgan.")
         return data
 
 # TestCheckSerializer (Listening va Reading uchun)
@@ -452,11 +452,3 @@ class OverallTestResultSerializer(serializers.Serializer):
             return "A1"
         else:
             return "Below A1"
-
-class WritingTestAnswerSerializer(serializers.Serializer):
-    question = serializers.PrimaryKeyRelatedField(queryset=Question.objects.all())
-    writing_image = serializers.ImageField(required=True)
-
-class BulkWritingTestCheckSerializer(serializers.Serializer):
-    test_result_id = serializers.IntegerField(required=False, allow_null=True)
-    answers = serializers.ListField(child=WritingTestAnswerSerializer(), min_length=1)

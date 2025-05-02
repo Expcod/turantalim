@@ -83,6 +83,10 @@ TELEGRAM_CHAT_ID = env.str("TELEGRAM_CHAT_ID")
 #openai settings
 OPENAI_API_KEY = env.str("OPENAI_API_KEY")
 
+# Eskiz settings
+ESKIZ_TOKEN = env.str("ESKIZ_TOKEN")
+ESKIZ_CALLBACK_URL = ""
+
 # Email sozlamalari (Gmail uchun)
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com'

@@ -2,6 +2,47 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.conf import settings
 
+class UserBalance(models.Model):
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        verbose_name="Foydalanuvchi"
+    )
+    balance = models.IntegerField(default=0, verbose_name="Balans (UZS)")
+
+    class Meta:
+        verbose_name = "Foydalanuvchi Balansi"
+        verbose_name_plural = "Foydalanuvchi Balanslari"
+
+    def __str__(self):
+        return f"{self.user.username} - {self.balance} UZS"
+
+class BalanceTransaction(models.Model):
+    TRANSACTION_TYPES = (
+        ('topup', 'Balans To‘ldirish'),
+        ('deduct', 'Balansdan Ayirish'),
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        verbose_name="Foydalanuvchi"
+    )
+    amount = models.IntegerField(verbose_name="Miqdor (UZS)")
+    transaction_type = models.CharField(
+        max_length=10,
+        choices=TRANSACTION_TYPES,
+        verbose_name="Tranzaksiya Turi"
+    )
+    description = models.CharField(max_length=255, verbose_name="Tavsif")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Balans Tranzaksiyasi"
+        verbose_name_plural = "Balans Tranzaksiyalari"
+
+    def __str__(self):
+        return f"{self.user.username} - {self.transaction_type} - {self.amount} UZS"
+
 class ExamPayment(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,  
