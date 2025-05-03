@@ -1,5 +1,7 @@
 from django.urls import path
 from .views import *
+from .writing_views import WritingTestCheckApiView
+from .speaking_views import SpeakingTestCheckApiView
 urlpatterns = [
 
     # Main test

@@ -42,6 +42,17 @@ def process_test_response(user, test_result, question, processed_answer, prompt,
     if logger is None:
         logger = logging.getLogger(__name__)
 
+    # Handle case where processed_answer is None
+    if processed_answer is None:
+        logger.error(f"No processed answer for question {question.id}")
+        return {
+            "score": 0,
+            "result": "Javob matni aniqlanmadi yoki OCR xatolik yuz berdi.",
+            "test_completed": False,
+            "user_answer": "",
+            "question_text": question.text,
+        }
+
     try:
         response = client.chat.completions.create(
             model="gpt-4o",
@@ -84,19 +95,20 @@ def process_test_response(user, test_result, question, processed_answer, prompt,
         comment = " ".join(comment_lines)  # Izohlarni birlashtirish
 
         # TestResult ni yangilash
-        test_result.score = round(score)
-        test_result.status = 'completed'
-        test_result.end_time = timezone.now()
-        test_result.save()
+        if test_result is not None:
+            test_result.score = round(score)
+            test_result.status = 'completed'
+            test_result.end_time = timezone.now()
+            test_result.save()
 
-        # UserTest uchun umumiy score ni yangilash
-        user_test = test_result.user_test
-        all_test_results = TestResult.objects.filter(user_test=user_test, status='completed')
-        if all_test_results.exists():
-            total_score = sum(tr.score for tr in all_test_results) / all_test_results.count()
-            user_test.score = round(total_score)
-            user_test.status = 'completed' if all_test_results.count() == Section.objects.filter(exam=user_test.exam).count() else 'started'
-            user_test.save()
+            # UserTest uchun umumiy score ni yangilash
+            user_test = test_result.user_test
+            all_test_results = TestResult.objects.filter(user_test=user_test, status='completed')
+            if all_test_results.exists():
+                total_score = sum(tr.score for tr in all_test_results) / all_test_results.count()
+                user_test.score = round(total_score)
+                user_test.status = 'completed' if all_test_results.count() == Section.objects.filter(exam=user_test.exam).count() else 'started'
+                user_test.save()
 
         return {
             "score": score,
