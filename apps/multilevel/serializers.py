@@ -187,8 +187,8 @@ class TestCheckSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = UserAnswer
-        fields = ['id', 'question', 'user_option', 'user_answer', 'is_correct', 'test_result', 'test_result_id']
-        read_only_fields = ['id', 'is_correct', 'test_result']
+        fields = ['question', 'user_option', 'user_answer', 'is_correct', 'test_result', 'test_result_id']
+        read_only_fields = ['is_correct', 'test_result']
 
     def get_test_result_id(self, obj):
         return obj.test_result.id if obj.test_result else None
@@ -198,15 +198,15 @@ class TestCheckSerializer(serializers.ModelSerializer):
         user_option = data.get('user_option')
         user_answer = data.get('user_answer')
 
-        if question.has_options and user_option is None:
-            raise serializers.ValidationError("Variantli savol uchun user_option kiritilishi shart!")
+        if question.has_options and not user_option:
+            raise serializers.ValidationError("Optionli savol uchun variant tanlash kerak.")
         if not question.has_options and not user_answer:
-            raise serializers.ValidationError("Variantsiz savol uchun user_answer kiritilishi shart!")
+            raise serializers.ValidationError("Optionsiz savol uchun javob kiritish kerak.")
         return data
 
 class BulkTestCheckSerializer(serializers.Serializer):
     test_result_id = serializers.IntegerField(required=False, allow_null=True)
-    answers = serializers.ListField(child=TestCheckSerializer(), min_length=1)
+    answers = TestCheckSerializer(many=True)
 
     def validate(self, data):
         question_ids = [answer['question'].id for answer in data['answers']]
