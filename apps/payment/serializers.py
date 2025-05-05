@@ -13,16 +13,17 @@ class PaymentSerializer(serializers.ModelSerializer):
             "is_paid",
             "payment_method",
         ]
+        read_only_fields = ["user", "amount", "is_paid", "payment_method"]
 
 class BalanceTopUpSerializer(serializers.ModelSerializer):
     class Meta:
         model = BalanceTransaction
         fields = ["id", "user", "amount", "transaction_type", "description"]
-        read_only_fields = ["transaction_type", "description"]
+        read_only_fields = ["user", "transaction_type", "description"]
 
     def validate(self, data):
         if data["amount"] <= 0:
-            raise serializers.ValidationError("Miqdor 0 dan katta bo‘lishi kerak!")
+            raise serializers.ValidationError("Miqdor 0 dan katta bo'lishi kerak!")
         return data
 
 class BalanceSerializer(serializers.ModelSerializer):
