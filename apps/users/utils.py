@@ -43,6 +43,9 @@ def send_verification_email(email, code):
 
 def send_sms_via_eskiz(phone_number, code):
     """Eskiz.uz orqali SMS yuborish"""
+    if not settings.ESKIZ_TOKEN:
+        return False
+
     url = "https://notify.eskiz.uz/api/message/sms/send"
     headers = {
         "Authorization": f"Bearer {settings.ESKIZ_TOKEN}"
@@ -50,16 +53,16 @@ def send_sms_via_eskiz(phone_number, code):
     cleaned_phone = phone_number.replace("+", "").replace(" ", "")
     data = {
         "mobile_phone": cleaned_phone,
-        "message": f"TuranTalim tasdiqlash kodingiz: {code}. Kod 3 daqiqa amal qiladi.",
+        "message": f"Sizning https://turantalim.uz sahifasiga kirish uchun tasdiqlash kodingiz: {code}. Kod 3 daqiqa amal qiladi.",
         "from": "4546",
         "callback_url": settings.ESKIZ_CALLBACK_URL or ""
     }
     
     try:
         response = requests.post(url, headers=headers, data=data)
+        if response.status_code == 401:
+            return False
         response.raise_for_status()
-        logger.info(f"SMS muvaffaqiyatli yuborildi: {phone_number}, Javob: {response.json()}")
         return True
-    except requests.RequestException as e:
-        logger.error(f"SMS yuborishda xatolik: {phone_number} - {str(e)}, Javob: {response.text if 'response' in locals() else 'N/A'}")
+    except requests.RequestException:
         return False

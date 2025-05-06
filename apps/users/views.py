@@ -196,8 +196,10 @@ class PasswordResetRequestView(APIView):
 
         # SMS yoki Email orqali yuborish
         if identifier.startswith('+998'):
-            # Asinxron SMS yuborish
-            send_sms_task.delay(identifier, code)
+            # Direct SMS sending for testing
+            sms_sent = send_sms_via_eskiz(identifier, code)
+            if not sms_sent:
+                return Response({"error": "SMS yuborishda xatolik yuz berdi!"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             return Response({"message": "Tasdiqlash kodi SMS orqali yuborildi."}, status=status.HTTP_200_OK)
         else:
             # Asinxron email yuborish
