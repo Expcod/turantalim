@@ -53,7 +53,7 @@ def send_sms_via_eskiz(phone_number, code):
     cleaned_phone = phone_number.replace("+", "").replace(" ", "")
     data = {
         "mobile_phone": cleaned_phone,
-        "message": f"Sizning https://turantalim.uz sahifasiga kirish uchun tasdiqlash kodingiz: {code}. Kod 3 daqiqa amal qiladi.",
+        "message": f"Sizning https://turantalim.uz sahifasida parolni yangilash uchun tasdiqlash kodingiz: {code}.",
         "from": "4546",
         "callback_url": settings.ESKIZ_CALLBACK_URL or ""
     }

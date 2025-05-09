@@ -21,7 +21,7 @@ class TestRequestApiView(APIView):
         operation_summary="Test so'rash",
         manual_parameters=[
             openapi.Parameter('language', openapi.IN_QUERY, description="Tilni tanlang (Language ID orqali)", type=openapi.TYPE_INTEGER),
-            openapi.Parameter('level', openapi.IN_QUERY, description="Test darajasini tanlang!", type=openapi.TYPE_STRING, enum=['A1', 'A2', 'B1', 'B2', 'C1', 'multilevel']),
+            openapi.Parameter('level', openapi.IN_QUERY, description="Test darajasini tanlang!", type=openapi.TYPE_STRING, enum=['A1', 'A2', 'B1', 'B2', 'C1', 'multilevel','tys']),
             openapi.Parameter('test', openapi.IN_QUERY, description="Test turini tanlang: Listening, Writing, Reading, Speaking", type=openapi.TYPE_STRING, enum=['listening', 'writing', 'reading', 'speaking']),
             openapi.Parameter('exam_id', openapi.IN_QUERY, description="Imtihonni tanlang (Exam ID orqali)", type=openapi.TYPE_INTEGER),
         ],
@@ -42,7 +42,7 @@ class TestRequestApiView(APIView):
         except Language.DoesNotExist:
             return Response({"error": "Til topilmadi!"}, status=404)
 
-        LEVEL_CHOICES = ['A1', 'A2', 'B1', 'B2', 'C1', 'multilevel']
+        LEVEL_CHOICES = ['A1', 'A2', 'B1', 'B2', 'C1', 'multilevel','tys']
         if level_choice not in LEVEL_CHOICES:
             return Response({"error": f"Noto'g'ri daraja! Daraja quyidagilardan biri bo'lishi kerak: {', '.join(LEVEL_CHOICES)}."}, status=400)
         

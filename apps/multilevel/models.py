@@ -24,6 +24,7 @@ LEVEL_CHOICES = [
     ("b2", "B2"),
     ("c1", "C1"),
     ("multilevel", "Multilevel"),
+    ("tys","TYS")
 ]
 
 # Exam Model
