@@ -96,6 +96,40 @@ JAZZMIN_SETTINGS: dict = {
     },
     # Add a language dropdown into the admin
     "language_chooser": False,
+    # Order with respect to
+    "order_with_respect_to": [
+        "multilevel.Exam",           # 1. Exams
+        "multilevel.Section",        # 2. Bo'limlar
+        "multilevel.Test",           # 3. Testlar
+        "multilevel.Question",       # 4. Savollar
+        "multilevel.UserTestResult"  # Foydalanuvchi testi natijalari
+    ],
+
+    # Custom links
+    "custom_links": {
+        # Zarur bo‘lsa, bu yerga custom linklar qo‘shiladi
+    },
+
+    # Side menu
+    "side_menu": [
+        {
+            "app": "yourapp",
+            "label": "Multilevel",
+            "models": [
+                "multilevel.Exam",
+                "multilevel.Section",
+                "multilevel.Test",
+                "multilevel.Question",
+            ]
+        },
+        {
+            "app": "yourapp",
+            "label": "Natijalar",
+            "models": [
+                "multilevel.UserTestResult"
+            ]
+        }
+    ],
 }
 
 JAZZMIN_UI_TWEAKS = {
