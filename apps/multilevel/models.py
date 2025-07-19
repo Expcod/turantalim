@@ -26,7 +26,10 @@ LEVEL_CHOICES = [
     ("multilevel", "Multilevel"),
     ("tys","TYS")
 ]
-
+EXAM_STATUS_CHOICES = [
+    ("active", "Aktiv"),
+    ("off","Off"),
+]
 # Exam Model
 class Exam(models.Model):
     language = models.ForeignKey(Language, on_delete=models.SET_NULL, null=True, verbose_name="Til")
@@ -34,7 +37,10 @@ class Exam(models.Model):
     description = models.TextField(verbose_name="Tavsif", null=True, blank=True)
     level = models.CharField(max_length=20, choices=LEVEL_CHOICES, default="multilevel", verbose_name="Daraja")
     price = models.IntegerField(default=0, verbose_name="Narxi")
-
+    status = models.CharField(max_length=20, choices=EXAM_STATUS_CHOICES, default="active", verbose_name="Faol")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Yaratilgan vaqti")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="O'zgartirilgan vaqti")
+    
     def __str__(self):
         return self.title[:70]
 
