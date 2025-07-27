@@ -411,7 +411,7 @@ class ExamListView(APIView):
         level = request.GET.get('level')
         
         # Faqat aktiv imtihonlarni olish
-        queryset = Exam.objects.filter(status='aktiv')
+        queryset = Exam.objects.filter(status='active')
         
         # Level bo'yicha filtrlash
         if level:
