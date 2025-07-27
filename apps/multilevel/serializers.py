@@ -22,6 +22,14 @@ class ExamSerializer(serializers.ModelSerializer):
         model = Exam
         fields = ['id', 'title', 'level', 'language']
 
+# Imtihonlar ro'yxati uchun alohida serializer
+class ExamListSerializer(serializers.ModelSerializer):
+    language = serializers.CharField(source='language.name', read_only=True)
+    
+    class Meta:
+        model = Exam
+        fields = ['id', 'title', 'description', 'level', 'language', 'price']
+
 class TestSerializer(serializers.ModelSerializer):
     options = serializers.SerializerMethodField()
 

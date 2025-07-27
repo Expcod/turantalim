@@ -1,0 +1,313 @@
+/* Turantalim.uz Admin Panel Custom Styles */
+
+/* Form elementlari uchun stillar */
+.form-row .field-exam select,
+.form-row .field-section select,
+.form-row .field-test select {
+    width: 100%;
+    padding: 10px;
+    border: 2px solid #e9ecef;
+    border-radius: 6px;
+    background-color: #fff;
+    font-size: 14px;
+    transition: all 0.3s ease;
+}
+
+.form-row .field-exam select:focus,
+.form-row .field-section select:focus,
+.form-row .field-test select:focus {
+    border-color: #007bff;
+    outline: none;
+    box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+    transform: translateY(-1px);
+}
+
+/* Disabled holat uchun stillar */
+.form-row .field-section select:disabled {
+    background-color: #f8f9fa;
+    border-color: #dee2e6;
+    color: #6c757d;
+    cursor: not-allowed;
+}
+
+/* Label stillari */
+.form-row .field-exam label,
+.form-row .field-section label,
+.form-row .field-test label {
+    font-weight: 600;
+    color: #495057;
+    margin-bottom: 8px;
+    display: block;
+    font-size: 14px;
+}
+
+/* Exam maydoni uchun maxsus stillar */
+.form-row .field-exam {
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.form-row .field-exam label {
+    color: #007bff;
+    font-size: 16px;
+}
+
+/* Loading holati */
+.loading {
+    opacity: 0.6;
+    pointer-events: none;
+    position: relative;
+}
+
+.loading::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 20px;
+    height: 20px;
+    margin: -10px 0 0 -10px;
+    border: 2px solid #f3f3f3;
+    border-top: 2px solid #007bff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Ma'lumot ko'rsatish bloklari */
+.section-info,
+.test-info {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 15px;
+    margin-top: 15px;
+    font-size: 14px;
+    color: #495057;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.section-info strong,
+.test-info strong {
+    color: #212529;
+    font-weight: 600;
+}
+
+/* Variant qo'shish/o'chirish tugmalari */
+.add-option-btn,
+.remove-option-btn {
+    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 6px;
+    cursor: pointer;
+    margin: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.remove-option-btn {
+    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+}
+
+.add-option-btn:hover {
+    background: linear-gradient(135deg, #0056b3 0%, #004085 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+.remove-option-btn:hover {
+    background: linear-gradient(135deg, #c82333 0%, #a71e2a 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+/* Variant formset stillari */
+.option-formset {
+    border: 2px solid #e9ecef;
+    border-radius: 8px;
+    padding: 20px;
+    margin: 15px 0;
+    background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    transition: all 0.3s ease;
+}
+
+.option-formset:hover {
+    border-color: #007bff;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.option-formset input[type="text"] {
+    width: 100%;
+    padding: 12px;
+    border: 2px solid #e9ecef;
+    border-radius: 6px;
+    margin-bottom: 15px;
+    font-size: 14px;
+    transition: all 0.3s ease;
+}
+
+.option-formset input[type="text"]:focus {
+    border-color: #007bff;
+    outline: none;
+    box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+}
+
+.option-formset input[type="checkbox"] {
+    margin-right: 10px;
+    transform: scale(1.2);
+}
+
+.option-formset label {
+    font-weight: 500;
+    color: #495057;
+    font-size: 14px;
+}
+
+/* Checkbox stillari */
+.field-has_options input[type="checkbox"] {
+    transform: scale(1.3);
+    margin-right: 10px;
+}
+
+.field-has_options label {
+    font-weight: 600;
+    color: #495057;
+    font-size: 16px;
+}
+
+/* Textarea stillari */
+.field-text textarea,
+.field-answer textarea {
+    width: 100%;
+    padding: 12px;
+    border: 2px solid #e9ecef;
+    border-radius: 6px;
+    font-size: 14px;
+    min-height: 100px;
+    resize: vertical;
+    transition: all 0.3s ease;
+}
+
+.field-text textarea:focus,
+.field-answer textarea:focus {
+    border-color: #007bff;
+    outline: none;
+    box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+}
+
+/* Xabar ko'rsatish */
+.alert {
+    padding: 12px 16px;
+    border-radius: 6px;
+    margin: 10px 0;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.alert-success {
+    background-color: #d4edda;
+    border: 1px solid #c3e6cb;
+    color: #155724;
+}
+
+.alert-danger {
+    background-color: #f8d7da;
+    border: 1px solid #f5c6cb;
+    color: #721c24;
+}
+
+.alert-warning {
+    background-color: #fff3cd;
+    border: 1px solid #ffeaa7;
+    color: #856404;
+}
+
+/* Responsive dizayn */
+@media (max-width: 768px) {
+    .form-row .field-exam select,
+    .form-row .field-section select,
+    .form-row .field-test select {
+        font-size: 16px; /* iOS da zoom oldini olish */
+    }
+    
+    .option-formset {
+        padding: 15px;
+    }
+    
+    .add-option-btn,
+    .remove-option-btn {
+        width: 100%;
+        margin: 5px 0;
+    }
+}
+
+/* Jazzmin admin uchun qo'shimcha stillar */
+.jazzmin .main-header {
+    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+}
+
+.jazzmin .main-sidebar {
+    background: linear-gradient(180deg, #343a40 0%, #495057 100%);
+}
+
+.jazzmin .content-header {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+}
+
+/* Form guruhlari */
+.form-row {
+    margin-bottom: 20px;
+    padding: 15px;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+/* Submit tugmalari */
+.submit-row {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    padding: 20px;
+    border-radius: 8px;
+    margin-top: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.submit-row input[type="submit"] {
+    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+    border: none;
+    padding: 12px 24px;
+    border-radius: 6px;
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.submit-row input[type="submit"]:hover {
+    background: linear-gradient(135deg, #20c997 0%, #17a2b8 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+/* Animatsiyalar */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.section-info,
+.test-info,
+.option-formset {
+    animation: fadeIn 0.3s ease-in-out;
+} 

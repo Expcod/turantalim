@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import Group
-from apps.users.models import User, VerificationCode
+from apps.users.models import User, VerificationCode, Country, Region
 
 # Group modelini admin paneldan o'chirish
 admin.site.unregister(Group)
@@ -35,3 +35,18 @@ class VerificationCodeAdmin(admin.ModelAdmin):
     search_fields = ('user__phone', 'user__email', 'code')
     readonly_fields = ('created_at',)
     ordering = ('-created_at',)
+
+@admin.register(Country)
+class CountryAdmin(admin.ModelAdmin):
+    list_display = ('id', 'name')
+    list_display_links = ('id', 'name')
+    search_fields = ('name',)
+    ordering = ('name',)
+
+@admin.register(Region)
+class RegionAdmin(admin.ModelAdmin):
+    list_display = ('id', 'name', 'country')
+    list_display_links = ('id', 'name')
+    list_filter = ('country',)
+    search_fields = ('name', 'country__name')
+    ordering = ('country__name', 'name')

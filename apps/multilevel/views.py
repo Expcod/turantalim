@@ -7,7 +7,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.pagination import PageNumberPagination
 from django.shortcuts import get_object_or_404
 from drf_yasg.utils import swagger_auto_schema
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, OpenApiParameter
+from drf_spectacular import openapi as spectacular_openapi
 from drf_yasg import openapi
 from .models import *
 from apps.payment.models import *
@@ -372,3 +373,68 @@ class OverallTestResultView(APIView):
         user = request.user
         serializer = OverallTestResultSerializer(user, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+class ExamListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_summary="Imtihonlar ro'yxatini olish",
+        operation_description="Level bo'yicha filtrlangan, faqat aktiv (status='aktiv') imtihonlar ro'yxatini qaytaradi.",
+        manual_parameters=[
+            openapi.Parameter(
+                'level', 
+                openapi.IN_QUERY, 
+                description="Imtihon darajasini tanlang", 
+                type=openapi.TYPE_STRING, 
+                enum=['a1', 'a2', 'b1', 'b2', 'c1', 'multilevel', 'tys'],
+                required=False
+            ),
+        ],
+        responses={200: ExamListSerializer(many=True)}
+    )
+    @extend_schema(
+        summary="Imtihonlar ro'yxatini olish",
+        description="Level bo'yicha filtrlangan, faqat aktiv (status='aktiv') imtihonlar ro'yxatini qaytaradi.",
+        parameters=[
+            OpenApiParameter(
+                name='level', 
+                location=OpenApiParameter.QUERY, 
+                description="Imtihon darajasini tanlang", 
+                type=str,
+                enum=['a1', 'a2', 'b1', 'b2', 'c1', 'multilevel', 'tys'],
+                required=False
+            ),
+        ],
+        responses={200: ExamListSerializer(many=True)}
+    )
+    def get(self, request):
+        level = request.GET.get('level')
+        
+        # Faqat aktiv imtihonlarni olish
+        queryset = Exam.objects.filter(status='aktiv')
+        
+        # Level bo'yicha filtrlash
+        if level:
+            # Level choices tekshiruvi
+            valid_levels = ['a1', 'a2', 'b1', 'b2', 'c1', 'multilevel', 'tys']
+            if level.lower() not in valid_levels:
+                return Response({
+                    "error": f"Noto'g'ri level! Quyidagilardan birini tanlang: {', '.join(valid_levels)}"
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            queryset = queryset.filter(level=level.lower())
+        
+        # Agar hech qanday imtihon topilmasa
+        if not queryset.exists():
+            message = f"'{level}' darajasida" if level else "Hozircha hech qanday"
+            return Response({
+                "message": f"{message} aktiv imtihonlar mavjud emas.",
+                "exams": []
+            }, status=status.HTTP_200_OK)
+        
+        serializer = ExamListSerializer(queryset, many=True)
+        return Response({
+            "message": "Imtihonlar muvaffaqiyatli topildi.",
+            "count": queryset.count(),
+            "exams": serializer.data
+        }, status=status.HTTP_200_OK)

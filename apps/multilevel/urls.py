@@ -4,6 +4,9 @@ from .writing_views import WritingTestCheckApiView
 from .speaking_views import SpeakingTestCheckApiView
 urlpatterns = [
 
+    # Exams list
+    path('exams/', ExamListView.as_view(), name='exam-list'),
+
     # Main test
     path('test/', TestRequestApiView.as_view(), name='test-request'),
     
