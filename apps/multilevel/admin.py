@@ -88,7 +88,7 @@ class QuestionAdminForm(forms.ModelForm):
 # Exam Admin
 @admin.register(Exam)
 class ExamAdmin(admin.ModelAdmin):
-    list_display = ('title', 'language', 'level', 'price')
+    list_display = ('title', 'language', 'level', 'price','status')
     search_fields = ('title', 'description')
     list_filter = ('language', 'level')
 

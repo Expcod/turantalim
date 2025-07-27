@@ -26,10 +26,6 @@ LEVEL_CHOICES = [
     ("multilevel", "Multilevel"),
     ("tys","TYS")
 ]
-STATUS_CHOICES = [
-    ("aktiv", "Aktiv"),
-    ("off", "Off"),
-]   
 
 # Exam Model
 class Exam(models.Model):
@@ -38,7 +34,7 @@ class Exam(models.Model):
     description = models.TextField(verbose_name="Tavsif", null=True, blank=True)
     level = models.CharField(max_length=20, choices=LEVEL_CHOICES, default="multilevel", verbose_name="Daraja")
     price = models.IntegerField(default=0, verbose_name="Narxi")
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="aktiv", verbose_name="aktiv")
+
     def __str__(self):
         return self.title[:70]
 
