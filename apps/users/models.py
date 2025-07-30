@@ -6,6 +6,7 @@ from django.db import models
 from apps.main.models import Language
 from django.core.exceptions import ValidationError
 from django.utils import timezone
+from apps.payment.models import UserBalance
 
 class Country(models.Model):
     name = models.CharField(max_length=50)
@@ -83,7 +84,6 @@ class User(AbstractUser):
     gender = models.CharField(max_length=10, choices=GENDER_CHOICES, null=True, blank=True)
     region = models.ForeignKey(Region, on_delete=models.CASCADE, blank=True, null=True)
     language = models.ForeignKey(Language, on_delete=models.CASCADE, blank=True, null=True)
-    balance = models.FloatField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     objects = CustomUserManager()  # Set the custom manager

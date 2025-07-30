@@ -10,7 +10,7 @@ admin.site.unregister(Group)
 class UserAdmin(BaseUserAdmin):
     fieldsets = (
         (None, {"fields": ("phone", "password")}),  # Username o'rniga phone
-        ("Personal info", {"fields": ("first_name", "last_name", "email", "picture", "gender", "region", "language", "balance")}),
+        ("Personal info", {"fields": ("first_name", "last_name", "email", "picture", "gender", "region", "language")}),
         ("Permissions", {"fields": ("is_active", "is_staff", "is_superuser", "groups", "user_permissions")}),
         ("Important dates", {"fields": ("last_login", "date_joined")}),
     )

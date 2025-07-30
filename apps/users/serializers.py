@@ -9,6 +9,7 @@ from django.contrib.auth import authenticate
 from django.utils.translation import gettext_lazy as _
 from apps.multilevel.models import TestResult, UserTest, Section
 from apps.multilevel.serializers import TestResultDetailSerializer
+from apps.payment.models import UserBalance
 from django.utils import timezone
 User = get_user_model()
 
@@ -78,6 +79,7 @@ class UserSerializer(serializers.ModelSerializer):
     region = RegionSerializer(read_only=True)
     language = serializers.CharField(source='language.name', read_only=True)
     picture = serializers.SerializerMethodField()
+    balance = serializers.SerializerMethodField(read_only=True)  # Payment app'dagi balansdan olish
     user_test_result = serializers.SerializerMethodField(read_only=True)
     new_test_result = TestResultInputSerializer(write_only=True, required=False)  # Yangi test natijasini qabul qilish uchun
 
@@ -88,6 +90,14 @@ class UserSerializer(serializers.ModelSerializer):
                 return request.build_absolute_uri(obj.picture.url)
             return obj.picture.url
         return None
+
+    def get_balance(self, obj):
+        """Payment app'dagi UserBalance modelidan balansni olish"""
+        try:
+            user_balance = UserBalance.objects.get(user=obj)
+            return user_balance.balance
+        except UserBalance.DoesNotExist:
+            return 0
 
     def get_user_test_result(self, obj):
         return OverallTestResultSerializer(obj, context=self.context).data
