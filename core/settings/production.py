@@ -1,24 +1,22 @@
 from .base import *  # noqa
 
 
-DEBUG = False
+DEBUG = True
 
 # Database
 
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": env.str("DB_NAME"),
-        "USER": env.str("DB_USER"),
-        "PASSWORD": env.str("DB_PASSWORD"),
-        "HOST": env.str("DB_HOST"),
-        "PORT": env.str("DB_PORT"),
-        "ATOMIC_REQUESTS": False,
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'turantalim_db',
+        'USER': 'turan_user',
+        'PASSWORD': 'cwhnsis98',
+        'HOST': 'localhost',
+        'PORT': '5432',
     }
 }
-
 # CORS
 
-CORS_ALLOW_ALL_ORIGINS = True
-CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOW_HEADERS = ["*"]
+# CORS_ALLOW_ALL_ORIGINS = True
+# CORS_ALLOW_CREDENTIALS = True
+# CORS_ALLOW_HEADERS = ["*"]

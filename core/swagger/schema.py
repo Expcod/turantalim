@@ -1,5 +1,5 @@
 from django.urls import re_path
-
+from django.contrib.auth.decorators import login_required
 from core.swagger.utils import main_schema_view
 
 swagger_urlpatterns = [

@@ -23,7 +23,7 @@ LEVEL_CHOICES = [
     ("b1", "B1"),
     ("b2", "B2"),
     ("c1", "C1"),
-    ("multilevel", "Multilevel"),
+    ("multilevel", "CEFR"),
     ("tys","TYS")
 ]
 
@@ -82,9 +82,26 @@ class Test(models.Model):
     sample = models.TextField(verbose_name="Misol", null=True, blank=True)
     constraints = models.TextField(verbose_name="Shartlar", null=True, blank=True)
     order = models.PositiveSmallIntegerField(default=0, verbose_name="Tartib raqami")
+    response_time = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="Response Time (seconds)",
+        help_text="Response time for writing tests in seconds."
+    )
+    upload_time = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="Upload Time (seconds)",
+        help_text="Upload time for writing tests in seconds."
+    )
 
     def get_options(self):
-        return json.loads(self.options_array) if self.options_array else []
+        if self.options_array and self.options_array.strip():
+            try:
+                return json.loads(self.options_array)
+            except json.JSONDecodeError:
+                return []
+        return []
 
     def set_options(self, options_list):
         self.options_array = json.dumps(options_list)
@@ -105,20 +122,31 @@ class Test(models.Model):
         verbose_name = "Test"
         verbose_name_plural = "Testlar"
 
-# Question Model (o‘zgarmadi)
 class Question(models.Model):
-    test = models.ForeignKey(Test, on_delete=models.CASCADE, verbose_name="Savol testi")
-    text = models.TextField(verbose_name="Savol matni")
-    picture = models.ImageField(upload_to='questions/', null=True, blank=True, verbose_name="Test Rasmi")
-    answer = models.CharField(max_length=150, null=True, blank=True, verbose_name="Javob")
-    has_options = models.BooleanField(default=True, verbose_name="Variantlar mavjud")
+       test = models.ForeignKey(Test, on_delete=models.CASCADE, verbose_name="Savol testi")
+       text = models.TextField(verbose_name="Savol matni")
+       picture = models.ImageField(upload_to='questions/', null=True, blank=True, verbose_name="Test Rasmi")
+       answer = models.CharField(max_length=150, null=True, blank=True, verbose_name="Javob")
+       has_options = models.BooleanField(default=True, verbose_name="Variantlar mavjud")
+       preparation_time = models.PositiveSmallIntegerField(
+           null=True,
+           blank=True,
+           verbose_name="Preparation Time (seconds)",
+           help_text="Preparation time for speaking questions in seconds."
+       )
+       response_time = models.PositiveSmallIntegerField(
+           null=True,
+           blank=True,
+           verbose_name="Response Time (seconds)",
+           help_text="Response time for speaking questions in seconds."
+       )
 
-    def __str__(self):
-        return self.text[:50]
+       def __str__(self):
+           return self.text[:50]
 
-    class Meta:
-        verbose_name = "Savol"
-        verbose_name_plural = "Savollar"
+       class Meta:
+           verbose_name = "Savol"
+           verbose_name_plural = "Savollar"
 
 # Option Model
 class Option(models.Model):
@@ -206,7 +234,7 @@ class UserAnswer(models.Model):
     test_result = models.ForeignKey(TestResult, on_delete=models.CASCADE, verbose_name="Foydalanuvchi testi")
     question = models.ForeignKey(Question, on_delete=models.CASCADE, verbose_name="Savol")
     user_option = models.ForeignKey(Option, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Variant")
-    user_answer = models.CharField(max_length=200, verbose_name="Foydalanuvchi javobi", null=True, blank=True)
+    user_answer = models.CharField(max_length=9000, verbose_name="Foydalanuvchi javobi", null=True, blank=True)
     is_correct = models.BooleanField(default=False, verbose_name="To‘g‘ri javob")
 
     def clean(self):
@@ -221,3 +249,5 @@ class UserAnswer(models.Model):
     class Meta:
         verbose_name = "Foydalanuvchi javobi"
         verbose_name_plural = "Foydalanuvchi javoblari"
+
+

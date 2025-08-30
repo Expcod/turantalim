@@ -16,8 +16,11 @@ from .serializers import *
 from .utils import *
 from django.utils import timezone
 from django.db.models import Avg
+from .multilevel_score import calculate_overall_test_result
 
 class TestRequestApiView(APIView):
+    permission_classes = [IsAuthenticated]
+    
     @swagger_auto_schema(
         operation_summary="Test so'rash",
         manual_parameters=[
@@ -54,11 +57,11 @@ class TestRequestApiView(APIView):
         # Exam tanlash
         if exam_id:
             try:
-                exam = Exam.objects.get(pk=exam_id, language=language, level=level_choice)
+                exam = Exam.objects.get(pk=exam_id, language=language, level=level_choice.lower())
             except Exam.DoesNotExist:
                 return Response({"error": "Tanlangan Exam topilmadi yoki mos emas!"}, status=404)
         else:
-            exams = Exam.objects.filter(language=language, level=level_choice)
+            exams = Exam.objects.filter(language=language, level=level_choice.lower())
             if not exams.exists():
                 return Response({"error": f"{level_choice} darajasida {language.name} tilida imtihon mavjud emas!"}, status=404)
             return Response({
@@ -74,16 +77,31 @@ class TestRequestApiView(APIView):
         ).first()
 
         if not existing_user_test:
-            # Barcha eski faol testlarni yakunlash
-            UserTest.objects.filter(user=request.user, status='started').update(status='completed')
-            TestResult.objects.filter(user_test__user=request.user, status='started').update(status='completed')
-            # Yangi UserTest yaratish
-            existing_user_test = UserTest.objects.create(
-                user=request.user,
-                exam=exam,
-                language=language,
-                status='started'
-            )
+            # Multilevel imtihonlar uchun maxsus logika
+            if exam.level == 'multilevel':
+                # Multilevel imtihon boshlanmagan bo'lsa, yangi yaratish
+                # Barcha eski faol testlarni yakunlash
+                UserTest.objects.filter(user=request.user, status='started').update(status='completed')
+                TestResult.objects.filter(user_test__user=request.user, status='started').update(status='completed')
+                # Yangi UserTest yaratish
+                existing_user_test = UserTest.objects.create(
+                    user=request.user,
+                    exam=exam,
+                    language=language,
+                    status='started'
+                )
+            else:
+                # Boshqa level'lar uchun: har bir section uchun alohida UserTest
+                # Barcha eski faol testlarni yakunlash
+                UserTest.objects.filter(user=request.user, status='started').update(status='completed')
+                TestResult.objects.filter(user_test__user=request.user, status='started').update(status='completed')
+                # Yangi UserTest yaratish
+                existing_user_test = UserTest.objects.create(
+                    user=request.user,
+                    exam=exam,
+                    language=language,
+                    status='started'
+                )
 
         # Faol TestResult ni tekshirish yoki yangi yaratish
         existing_test_result = TestResult.objects.filter(
@@ -99,13 +117,38 @@ class TestRequestApiView(APIView):
             if not all_sections.exists():
                 return Response({"error": f"Ushbu imtihonda {test_type} turidagi testlar mavjud emas!"}, status=404)
 
-            used_section_ids = TestResult.objects.filter(user_test=existing_user_test).values_list('section_id', flat=True).distinct()
-            unused_sections = all_sections.exclude(id__in=used_section_ids)
-
-            if unused_sections.exists():
-                selected_section = choice(unused_sections)
+            # Multilevel imtihonlar uchun maxsus logika
+            if exam.level == 'multilevel':
+                # Multilevel: barcha section'larni ketma-ket o'tish kerak
+                used_section_ids = TestResult.objects.filter(user_test=existing_user_test).values_list('section_id', flat=True).distinct()
+                unused_sections = all_sections.exclude(id__in=used_section_ids)
+                
+                if unused_sections.exists():
+                    # Keyingi section'ni tanlash
+                    selected_section = unused_sections.first()
+                else:
+                    # Barcha section'lar tugatilgan, qayta boshlash
+                    # Faqat completed testlar bo'lsa, yangi test yaratish
+                    completed_test_results = TestResult.objects.filter(
+                        user_test=existing_user_test,
+                        section__type=test_type,
+                        status='completed'
+                    )
+                    if completed_test_results.exists():
+                        # Yangi section tanlash (random)
+                        selected_section = choice(all_sections)
+                    else:
+                        # Hech qanday test yo'q, birinchi section'ni tanlash
+                        selected_section = all_sections.first()
             else:
-                selected_section = choice(all_sections)
+                # Boshqa level'lar: har bir section uchun alohida
+                used_section_ids = TestResult.objects.filter(user_test=existing_user_test).values_list('section_id', flat=True).distinct()
+                unused_sections = all_sections.exclude(id__in=used_section_ids)
+
+                if unused_sections.exists():
+                    selected_section = choice(unused_sections)
+                else:
+                    selected_section = choice(all_sections)
 
             existing_test_result = TestResult.objects.create(
                 user_test=existing_user_test,
@@ -127,199 +170,6 @@ class TestRequestApiView(APIView):
             "test_result_id": existing_test_result.id
         }
         return Response(test_data)
-
-class TestCheckApiView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def handle_error(self, message, status_code):
-        return Response({"error": message}, status=status_code)
-
-    @swagger_auto_schema(
-        operation_summary="Foydalanuvchi javoblarini tekshirish",
-        operation_description="Bitta yoki bir nechta savol uchun javoblarni tekshiradi.",
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                'test_result_id': openapi.Schema(type=openapi.TYPE_INTEGER, description='Test natijasi ID si', nullable=True),
-                'answers': openapi.Schema(
-                    type=openapi.TYPE_ARRAY,
-                    items=openapi.Schema(
-                        type=openapi.TYPE_OBJECT,
-                        properties={
-                            'question': openapi.Schema(type=openapi.TYPE_INTEGER, description='Savol ID si'),
-                            'user_option': openapi.Schema(type=openapi.TYPE_INTEGER, description='Tanlangan variant ID si', nullable=True),
-                            'user_answer': openapi.Schema(type=openapi.TYPE_STRING, description='Foydalanuvchi javobi', nullable=True),
-                        },
-                        required=['question']
-                    )
-                )
-            }
-        ),
-        responses={
-            201: TestCheckSerializer(many=True),
-            200: TestCheckSerializer(many=True),
-            400: openapi.Response(description="Validation xatosi"),
-            403: openapi.Response(description="TestResult topilmadi yoki faol emas")
-        }
-    )
-    def post(self, request, *args, **kwargs):
-        user = request.user
-        data = request.data if isinstance(request.data, dict) else {'answers': request.data}
-        serializer = BulkTestCheckSerializer(data=data, context={'request': request})
-
-        if not serializer.is_valid():
-            return self.handle_error(serializer.errors, status.HTTP_400_BAD_REQUEST)
-
-        test_result_id = serializer.validated_data.get('test_result_id')
-        answers_data = serializer.validated_data['answers']
-
-        # Birinchi savoldan Exam ni aniqlash
-        question = answers_data[0]['question']
-        exam = question.test.section.exam
-
-        # TestResult ni aniqlash va vaqtni tekshirish
-        current_test_result = self.get_active_test_result(user, test_result_id, question)
-        if isinstance(current_test_result, Response):
-            return current_test_result
-
-        # Javoblarni qayta ishlash
-        responses = self.process_answers(user, current_test_result, answers_data)
-
-        # Testni yakunlash
-        final_response = self.finalize_test(user, current_test_result, responses)
-        status_code = status.HTTP_201_CREATED if any(r.get('is_new') for r in responses) else status.HTTP_200_OK
-        return Response(final_response, status=status_code)
-
-    def get_active_test_result(self, user, test_result_id, question):
-        if test_result_id:
-            try:
-                test_result = TestResult.objects.get(id=test_result_id, user_test__user=user, status='started')
-            except TestResult.DoesNotExist:
-                return self.handle_error("Bu ID ga mos faol TestResult mavjud emas", status.HTTP_403_FORBIDDEN)
-        else:
-            test_result = TestResult.objects.filter(
-                user_test__user=user,
-                section=question.test.section,
-                status='started'
-            ).last()
-            if not test_result:
-                return self.handle_error("Ushbu bo‘lim uchun faol test topilmadi!", status.HTTP_400_BAD_REQUEST)
-
-        if test_result.end_time and test_result.end_time < timezone.now():
-            test_result.status = 'completed'
-            test_result.save()
-            test_result.user_test.status = 'completed'
-            test_result.user_test.save()
-            return self.handle_error("Test vaqti tugagan, yangi test so‘rang", status.HTTP_400_BAD_REQUEST)
-
-        return test_result
-
-    def process_answers(self, user, test_result, answers_data):
-        # Mavjud javoblarni olish
-        existing_answers = {ua.question_id: ua for ua in UserAnswer.objects.filter(test_result=test_result)}
-        
-        # Yangi va yangilanadigan javoblar uchun ro‘yxatlar
-        new_answers = []
-        update_answers = []
-
-        for answer_data in answers_data:
-            question = answer_data['question']
-            user_option = answer_data.get('user_option')
-            user_answer = answer_data.get('user_answer')
-
-            # To‘g‘ri javobni aniqlash
-            is_correct = False
-            if question.has_options:
-                correct_option = Option.objects.filter(question=question, is_correct=True).first()
-                is_correct = correct_option == user_option if user_option else False
-            else:
-                is_correct = (
-                    question.answer.strip().lower() == user_answer.strip().lower()
-                    if user_answer and question.answer else False
-                )
-
-            # Mavjud javobni yangilash yoki yangi javob yaratish
-            existing_answer = existing_answers.get(question.id)
-            if existing_answer:
-                existing_answer.user_option = user_option
-                existing_answer.user_answer = user_answer
-                existing_answer.is_correct = is_correct
-                update_answers.append(existing_answer)
-            else:
-                new_answer = UserAnswer(
-                    test_result=test_result,
-                    question=question,
-                    user_option=user_option,
-                    user_answer=user_answer,
-                    is_correct=is_correct
-                )
-                new_answers.append(new_answer)
-
-        # Bulk operatsiyalar
-        if new_answers:
-            UserAnswer.objects.bulk_create(new_answers)
-        if update_answers:
-            UserAnswer.objects.bulk_update(update_answers, ['user_option', 'user_answer', 'is_correct'])
-
-        # Javoblar uchun serializer tayyorlash
-        all_answers = UserAnswer.objects.filter(
-            test_result=test_result,
-            question__in=[answer_data['question'] for answer_data in answers_data]
-        )
-        response_serializer = TestCheckSerializer(all_answers, many=True, context={'request': self.request})
-        responses = [
-            {"data": data, "is_new": answer.question_id not in existing_answers}
-            for data, answer in zip(response_serializer.data, all_answers)
-        ]
-
-        return responses
-
-    def finalize_test(self, user, test_result, responses):
-        response_data = [r["data"] for r in responses]
-        total_questions = Question.objects.filter(test__section=test_result.section).count()
-        answered_questions = UserAnswer.objects.filter(test_result=test_result).count()
-
-        if total_questions == answered_questions:
-            correct_count = UserAnswer.objects.filter(test_result=test_result, is_correct=True).count()
-            score = (correct_count / total_questions * 100) if total_questions > 0 else 0
-
-            UserAnswer.objects.filter(test_result=test_result).update(score=score)
-
-            # Barcha bo'limlar tugaganligini tekshirish
-            user_test = test_result.user_test
-            all_sections = Section.objects.filter(exam=user_test.exam)
-            answered_sections = TestResult.objects.filter(user_test=user_test).distinct()
-
-            required_types = ['listening', 'reading', 'writing', 'speaking']
-            answered_types = [tr.section.type for tr in answered_sections]
-
-            if all(section_type in answered_types for section_type in required_types):
-                total_score = 0
-                section_count = 0
-
-                for section in all_sections:
-                    tr = TestResult.objects.filter(user_test=user_test, section=section).last()
-                    if tr:
-                        section_score = UserAnswer.objects.filter(test_result=tr).aggregate(Avg('score'))['score__avg'] or 0
-                        total_score += section_score
-                        section_count += 1
-
-                final_score = round(total_score / section_count) if section_count > 0 else 0
-                test_result.score = final_score
-                test_result.status = 'completed'
-                test_result.end_time = timezone.now()
-                test_result.save()
-
-                user_test.score = final_score
-                user_test.status = 'completed'
-                user_test.save()
-
-            return {
-                "answers": response_data,
-                "test_completed": True,
-                "score": round(score)
-            }
-        return {"answers": response_data}
 
 class TestResultDetailView(APIView):
     permission_classes = [IsAuthenticated]
@@ -345,7 +195,7 @@ class TestResultListView(APIView):
 
     @extend_schema(
         summary="Foydalanuvchining barcha test natijalari ro'yxatini olish",
-        description="Foydalanuvchining barcha test natijalarini qisqacha ko'rsatadi (section, language, status, percentage), pagination bilan.",
+        description="Barcha bo'limlar uchun ball (0-75) ko'rsatiladi: Listening/Reading jadval bo'yicha, Writing/Speaking bo'lim ballari yig'indisi. Pagination bilan.",
         responses={200: TestResultListSerializer(many=True)}
     )
     def get(self, request):
@@ -363,16 +213,111 @@ class TestResultListView(APIView):
 
 class OverallTestResultView(APIView):
     permission_classes = [IsAuthenticated]
-
-    @extend_schema(
-        summary="Foydalanuvchining umumiy test natijasini olish",
-        description="Listening, Reading, Writing va Speaking bo'limlari bo'yicha natijalarni va umumiy foiz hamda Multilevel darajasini qaytaradi.",
-        responses={200: OverallTestResultSerializer()}
+    
+    @swagger_auto_schema(
+        operation_description="Get overall test result with level calculation",
+        manual_parameters=[
+            openapi.Parameter(
+                'user_test_id',
+                openapi.IN_QUERY,
+                description="UserTest ID to get results for",
+                type=openapi.TYPE_INTEGER,
+                required=True
+            )
+        ],
+        responses={
+            200: openapi.Response(
+                description="Overall test result",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'user_test_id': openapi.Schema(type=openapi.TYPE_INTEGER),
+                        'user_id': openapi.Schema(type=openapi.TYPE_INTEGER),
+                        'exam_name': openapi.Schema(type=openapi.TYPE_STRING),
+                        'exam_level': openapi.Schema(type=openapi.TYPE_STRING),
+                        'section_scores': openapi.Schema(
+                            type=openapi.TYPE_OBJECT,
+                            properties={
+                                'listening': openapi.Schema(type=openapi.TYPE_INTEGER),
+                                'reading': openapi.Schema(type=openapi.TYPE_INTEGER),
+                                'writing': openapi.Schema(type=openapi.TYPE_INTEGER),
+                                'speaking': openapi.Schema(type=openapi.TYPE_INTEGER),
+                            }
+                        ),
+                        'total_score': openapi.Schema(type=openapi.TYPE_INTEGER),
+                        'max_possible_score': openapi.Schema(type=openapi.TYPE_INTEGER),
+                        'average_score': openapi.Schema(type=openapi.TYPE_NUMBER),
+                        'level': openapi.Schema(type=openapi.TYPE_STRING),
+                        'completed_sections': openapi.Schema(type=openapi.TYPE_INTEGER),
+                        'total_sections': openapi.Schema(type=openapi.TYPE_INTEGER),
+                        'is_complete': openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                    }
+                )
+            ),
+            400: openapi.Response(
+                description="Bad request",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'error': openapi.Schema(type=openapi.TYPE_STRING)
+                    }
+                )
+            ),
+            404: openapi.Response(
+                description="Not found",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'error': openapi.Schema(type=openapi.TYPE_STRING)
+                    }
+                )
+            )
+        }
     )
     def get(self, request):
-        user = request.user
-        serializer = OverallTestResultSerializer(user, context={'request': request})
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        """
+        Get overall test result with level calculation.
+        
+        Returns:
+            JSON response with section scores, total score, average score, and CEFR level
+        """
+        user_test_id = request.query_params.get('user_test_id')
+        
+        if not user_test_id:
+            return Response(
+                {"error": "user_test_id parameter is required"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            user_test_id = int(user_test_id)
+        except ValueError:
+            return Response(
+                {"error": "user_test_id must be a valid integer"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if user has access to this test result
+        try:
+            user_test = UserTest.objects.get(id=user_test_id)
+            if user_test.user != request.user:
+                return Response(
+                    {"error": "You don't have permission to access this test result"}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        except UserTest.DoesNotExist:
+            return Response(
+                {"error": "User test not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Calculate overall result
+        result = calculate_overall_test_result(user_test_id)
+        
+        if 'error' in result:
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+        
+        return Response(result, status=status.HTTP_200_OK)
 
 class ExamListView(APIView):
     permission_classes = [IsAuthenticated]
@@ -437,4 +382,132 @@ class ExamListView(APIView):
             "message": "Imtihonlar muvaffaqiyatli topildi.",
             "count": queryset.count(),
             "exams": serializer.data
+        }, status=status.HTTP_200_OK)
+
+class TestPreviewApiView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_summary="Test preview",
+        operation_description="Faqat test strukturasi va mavjud section turlarini qaytaradi. Hech qanday TestResult/UserTest yaratmaydi.",
+        manual_parameters=[
+            openapi.Parameter(
+                'level', openapi.IN_QUERY,
+                description="Daraja (masalan: A1, A2, B1, B2, C1, multilevel, tys)",
+                type=openapi.TYPE_STRING,
+                required=False,
+                enum=['A1', 'A2', 'B1', 'B2', 'C1', 'multilevel', 'tys']
+            ),
+            openapi.Parameter(
+                'exam_id', openapi.IN_QUERY,
+                description="Agar ma'lum exam uchun preview kerak bo'lsa, exam ID ni yuboring",
+                type=openapi.TYPE_INTEGER,
+                required=False
+            ),
+        ],
+        responses={
+            200: openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    'test_id': openapi.Schema(type=openapi.TYPE_INTEGER),
+                    'sections': openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Items(type=openapi.TYPE_STRING)),
+                }
+            ),
+            400: openapi.Schema(type=openapi.TYPE_OBJECT, properties={'error': openapi.Schema(type=openapi.TYPE_STRING)}),
+            404: openapi.Schema(type=openapi.TYPE_OBJECT, properties={'error': openapi.Schema(type=openapi.TYPE_STRING)}),
+        }
+    )
+    def get(self, request):
+        level = request.query_params.get('level')
+        exam_id = request.query_params.get('exam_id')
+
+        exam = None
+
+        if exam_id:
+            try:
+                exam = Exam.objects.get(id=exam_id, status='active')
+            except Exam.DoesNotExist:
+                return Response({"error": "Exam topilmadi yoki aktiv emas"}, status=status.HTTP_404_NOT_FOUND)
+        else:
+            if not level:
+                return Response({"error": "level yoki exam_id parametrlaridan biri talab qilinadi"}, status=status.HTTP_400_BAD_REQUEST)
+
+            valid_levels = ['a1', 'a2', 'b1', 'b2', 'c1', 'multilevel', 'tys']
+            if level.lower() not in valid_levels:
+                return Response({"error": f"Noto'g'ri level! Quyidagilardan birini tanlang: {', '.join(valid_levels)}"}, status=status.HTTP_400_BAD_REQUEST)
+
+            exam = Exam.objects.filter(level=level.lower(), status='active').order_by('-id').first()
+            if not exam:
+                return Response({"error": f"'{level}' darajasida aktiv imtihon topilmadi"}, status=status.HTTP_404_NOT_FOUND)
+
+        sections = list(Section.objects.filter(exam=exam).values_list('type', flat=True).distinct())
+        
+        # Agar exam level = multilevel yoki tys bo'lsa, sectionlar ketma ketligini belgilash
+        if exam.level in ['multilevel', 'tys']:
+            # Standart ketma ketlik: listening -> reading -> writing -> speaking
+            standard_order = ['listening', 'reading', 'writing', 'speaking']
+            # Faqat mavjud sectionlarni standart ketma ketlikda qaytarish
+            ordered_sections = [section for section in standard_order if section in sections]
+            sections = ordered_sections
+
+        return Response({
+            "test_id": exam.id,
+            "sections": sections,
+        }, status=status.HTTP_200_OK)
+
+class TestTimeInfoView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_summary="Test vaqt ma'lumotlarini olish",
+        operation_description="Test uchun belgilangan response_time va upload_time ma'lumotlarini qaytaradi",
+        manual_parameters=[
+            openapi.Parameter(
+                'test_id', openapi.IN_QUERY,
+                description="Test ID",
+                type=openapi.TYPE_INTEGER,
+                required=True
+            ),
+        ],
+        responses={
+            200: openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    'test_id': openapi.Schema(type=openapi.TYPE_INTEGER),
+                    'response_time': openapi.Schema(type=openapi.TYPE_INTEGER, nullable=True),
+                    'upload_time': openapi.Schema(type=openapi.TYPE_INTEGER, nullable=True),
+                    'section_type': openapi.Schema(type=openapi.TYPE_STRING),
+                }
+            ),
+            400: openapi.Schema(type=openapi.TYPE_OBJECT, properties={'error': openapi.Schema(type=openapi.TYPE_STRING)}),
+            404: openapi.Schema(type=openapi.TYPE_OBJECT, properties={'error': openapi.Schema(type=openapi.TYPE_STRING)}),
+        }
+    )
+    def get(self, request):
+        test_id = request.query_params.get('test_id')
+        
+        if not test_id:
+            return Response({"error": "test_id parametri talab qilinadi"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            test = Test.objects.get(id=test_id)
+        except Test.DoesNotExist:
+            return Response({"error": "Test topilmadi"}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Faqat writing section uchun vaqt ma'lumotlarini qaytarish
+        if test.section.type != 'writing':
+            return Response({
+                "test_id": test.id,
+                "response_time": None,
+                "upload_time": None,
+                "section_type": test.section.type,
+                "message": "Vaqt boshqarish faqat writing section uchun mavjud"
+            }, status=status.HTTP_200_OK)
+        
+        return Response({
+            "test_id": test.id,
+            "response_time": test.response_time,
+            "upload_time": test.upload_time,
+            "section_type": test.section.type,
+            "message": "Writing test vaqt ma'lumotlari"
         }, status=status.HTTP_200_OK)

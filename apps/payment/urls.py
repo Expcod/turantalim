@@ -7,4 +7,5 @@ urlpatterns = [
     path("balance/topup/", BalanceTopUpAPIView.as_view(), name='balance-topup'),
     path("balance/", BalanceAPIView.as_view(), name='balance'),
     path("balance/transactions/", BalanceTransactionListAPIView.as_view(), name='balance-transactions'),
+    path("payme/transactions/", PaymeTransactionListAPIView.as_view(), name='payme-transactions'),
 ]

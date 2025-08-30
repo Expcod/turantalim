@@ -54,15 +54,18 @@ class CustomTokenObtainPairView(TokenObtainPairView):
 
 # ✅ Profil ma'lumotlarini olish
 class ProfileDetailView(generics.RetrieveUpdateAPIView):  # RetrieveUpdateAPIView ga o'zgartirdik
-    serializer_class = UserSerializer
+    serializer_class = UserProfileWithTestResultsSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_object(self):
+        return self.request.user
 
     @swagger_auto_schema(
         responses={
-            200: UserSerializer,
+            200: UserProfileWithTestResultsSerializer,
             404: openapi.Response("Foydalanuvchi topilmadi")
         },
-        operation_description="Foydalanuvchi profilini va multilevel test natijalarini (listening, reading, writing, speaking bo'limlari bo'yicha) qaytaradi"
+        operation_description="Foydalanuvchi profilini va test natijalarini qaytaradi (multilevel va section natijalari)"
     )
     def get(self, request, *args, **kwargs):
         user = self.get_object()
@@ -257,3 +260,117 @@ class PasswordResetConfirmView(APIView):
         user.save()
 
         return Response({"message": "Parol muvaffaqiyatli o'zgartirildi!"}, status=status.HTTP_200_OK)
+
+
+class UserTestResultsView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    @swagger_auto_schema(
+        operation_description="Foydalanuvchining barcha test natijalarini olish",
+        manual_parameters=[
+            openapi.Parameter(
+                'type',
+                openapi.IN_QUERY,
+                description="Test turi: 'multilevel' yoki 'section'",
+                type=openapi.TYPE_STRING,
+                enum=['multilevel', 'section', 'all'],
+                required=False
+            ),
+            openapi.Parameter(
+                'limit',
+                openapi.IN_QUERY,
+                description="Natijalar soni (default: 10)",
+                type=openapi.TYPE_INTEGER,
+                required=False
+            )
+        ],
+        responses={
+            200: openapi.Response(
+                description="Test natijalari",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'multilevel_results': openapi.Schema(
+                            type=openapi.TYPE_ARRAY, 
+                            items=openapi.Schema(
+                                type=openapi.TYPE_OBJECT,
+                                properties={
+                                    'id': openapi.Schema(type=openapi.TYPE_INTEGER),
+                                    'exam_name': openapi.Schema(type=openapi.TYPE_STRING),
+                                    'exam_level': openapi.Schema(type=openapi.TYPE_STRING),
+                                    'language': openapi.Schema(type=openapi.TYPE_STRING),
+                                    'score': openapi.Schema(type=openapi.TYPE_INTEGER),
+                                    'status': openapi.Schema(type=openapi.TYPE_STRING),
+                                    'created_at': openapi.Schema(type=openapi.TYPE_STRING, format=openapi.FORMAT_DATETIME),
+                                    'overall_result': openapi.Schema(type=openapi.TYPE_OBJECT, nullable=True)
+                                }
+                            )
+                        ),
+                        'section_results': openapi.Schema(
+                            type=openapi.TYPE_ARRAY, 
+                            items=openapi.Schema(
+                                type=openapi.TYPE_OBJECT,
+                                properties={
+                                    'id': openapi.Schema(type=openapi.TYPE_INTEGER),
+                                    'exam_name': openapi.Schema(type=openapi.TYPE_STRING),
+                                    'exam_level': openapi.Schema(type=openapi.TYPE_STRING),
+                                    'language': openapi.Schema(type=openapi.TYPE_STRING),
+                                    'section_name': openapi.Schema(type=openapi.TYPE_STRING),
+                                    'section_type': openapi.Schema(type=openapi.TYPE_STRING),
+                                    'score': openapi.Schema(type=openapi.TYPE_INTEGER),
+                                    'status': openapi.Schema(type=openapi.TYPE_STRING),
+                                    'start_time': openapi.Schema(type=openapi.TYPE_STRING, format=openapi.FORMAT_DATETIME),
+                                    'end_time': openapi.Schema(type=openapi.TYPE_STRING, format=openapi.FORMAT_DATETIME)
+                                }
+                            )
+                        ),
+                        'total_multilevel': openapi.Schema(type=openapi.TYPE_INTEGER),
+                        'total_sections': openapi.Schema(type=openapi.TYPE_INTEGER)
+                    }
+                )
+            )
+        }
+    )
+    def get(self, request):
+        """
+        Foydalanuvchining test natijalarini olish
+        """
+        user = request.user
+        result_type = request.query_params.get('type', 'all')
+        limit = int(request.query_params.get('limit', 10))
+        
+        from apps.multilevel.models import UserTest, TestResult
+        
+        response_data = {}
+        
+        # Multilevel natijalari
+        if result_type in ['multilevel', 'all']:
+            multilevel_exams = UserTest.objects.filter(
+                user=user,
+                exam__level='multilevel',
+                status='completed'
+            ).order_by('-created_at')[:limit]
+            
+            response_data['multilevel_results'] = UserTestResultSerializer(multilevel_exams, many=True).data
+            response_data['total_multilevel'] = UserTest.objects.filter(
+                user=user,
+                exam__level='multilevel',
+                status='completed'
+            ).count()
+        
+        # Section natijalari
+        if result_type in ['section', 'all']:
+            section_results = TestResult.objects.filter(
+                user_test__user=user,
+                user_test__exam__level__in=['a1', 'a2', 'b1', 'b2', 'c1'],
+                status='completed'
+            ).select_related('user_test', 'user_test__exam', 'section').order_by('-created_at')[:limit]
+            
+            response_data['section_results'] = SectionTestResultSerializer(section_results, many=True).data
+            response_data['total_sections'] = TestResult.objects.filter(
+                user_test__user=user,
+                user_test__exam__level__in=['a1', 'a2', 'b1', 'b2', 'c1'],
+                status='completed'
+            ).count()
+        
+        return Response(response_data, status=status.HTTP_200_OK)

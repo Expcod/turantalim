@@ -55,6 +55,7 @@ CUSTOM_APPS = [
     'apps.multilevel',
     'apps.main',
     'apps.payment',
+    'apps.visitor',
 ]
 
 THIRD_PARTY_APPS = [
@@ -78,6 +79,7 @@ PAYME_ONE_TIME_PAYMENT = True
 #telegram settings
 TELEGRAM_BOT_TOKEN = env.str("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = env.str("TELEGRAM_CHAT_ID")
+TELEGRAM_VISITOR_CHAT_ID = env.str("TELEGRAM_VISITOR_CHAT_ID")  # Visitor app uchun alohida chat ID
 
 
 #openai settings
@@ -108,6 +110,9 @@ REST_FRAMEWORK = {
         "rest_framework_simplejwt.authentication.JWTAuthentication",
         "rest_framework.authentication.SessionAuthentication",
     ),
+    "DEFAULT_PERMISSION_CLASSES": (
+        "rest_framework.permissions.IsAuthenticated",  # API uchun umumiy ruxsat
+    ),
     "DEFAULT_FILTER_BACKENDS": ("django_filters.rest_framework.DjangoFilterBackend",),
     "DEFAULT_RENDERER_CLASSES": ("rest_framework.renderers.JSONRenderer",),
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.LimitOffsetPagination",
@@ -129,7 +134,9 @@ SWAGGER_SETTINGS = {
             'name': 'Authorization',
             'in': 'header'
       }
-   }
+   },
+   "LOGIN_URL": "/admin/login/",  # Login sahifasi yo‘li
+   "LOGOUT_URL": "/admin/logout/",  # Logout sahifasi yo‘li
 }
 
 MIDDLEWARE = [
@@ -143,9 +150,9 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-CORS_ALLOW_ALL_ORIGINS = True
+# CORS_ALLOW_ALL_ORIGINS = True
 
-CORS_ALLOW_CREDENTIALS = True
+# CORS_ALLOW_CREDENTIALS = True
 
 ROOT_URLCONF = 'core.urls'
 

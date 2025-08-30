@@ -6,6 +6,7 @@ from .models import Section, TestResult, UserAnswer, UserTest, Question
 from rest_framework.response import Response
 from rest_framework import status
 import re  # re modulini import qilish
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -35,9 +36,22 @@ def get_or_create_test_result(user, test_result_id, question):
 
     return test_result
 
-def process_test_response(user, test_result, question, processed_answer, prompt, client, logger=None):
+def process_test_response(
+    user,
+    test_result,
+    question,
+    processed_answer,
+    prompt,
+    client,
+    logger=None,
+    expect_json: bool = True,
+    finalize: bool = False,
+):
     """
-    Writing yoki Speaking test uchun OpenAI orqali baholash funksiyasi
+    Writing yoki Speaking test uchun OpenAI orqali baholash funksiyasi.
+
+    - expect_json: modeldan qat'iy JSON qaytishini kutish (muvaffaqiyatsiz bo'lsa, fallback ishlaydi)
+    - finalize: True bo'lsa, test_result va user_test ni shu yerning o'zida yakunlaydi
     """
     if logger is None:
         logger = logging.getLogger(__name__)
@@ -54,54 +68,65 @@ def process_test_response(user, test_result, question, processed_answer, prompt,
         }
 
     try:
+        # JSON formatni qat'iy so'rashga urinamiz
         response = client.chat.completions.create(
             model="gpt-4o",
             messages=[
-                {"role": "system", "content": "Siz professional IELTS baholovchisiz."},
-                {"role": "user", "content": prompt}
+                {"role": "system", "content": "Siz professional til imtihoni baholovchisiz. Qoidaga ko'ra faqat so'ralgan formatda javob bering."},
+                {"role": "user", "content": prompt},
             ],
-            temperature=0.3,
-            max_tokens=500,
+            temperature=0.2,
+            max_tokens=700,
+            response_format={"type": "json_object"} if expect_json else None,
+            timeout=60  # 60 second timeout
         )
 
         reply_text = response.choices[0].message.content.strip()
 
-        # Izoh va bahoni ajratish
-        lines = reply_text.split("\n")
-        
-        # Izoh qismini yig‘ish
-        comment_lines = []
-        score_line = None
-        for line in lines:
-            if line.startswith("Baho:"):
-                score_line = line
-                break
-            if line.strip():  # Bo‘sh qatorlarni o‘tkazib yuboramiz
-                comment_lines.append(line.replace("Izoh: ", "").strip())
-        
-        if not score_line:
-            logger.warning(f"Bahoni ajratib bo‘lmadi: {reply_text}, qatorlar: {lines}")
-            score = 0
-        else:
-            # Bahodan faqat raqamni olish
-            score_match = re.search(r'\d+', score_line)
-            if score_match:
-                score = int(score_match.group())
-                score = max(0, min(100, score))
-            else:
-                logger.warning(f"Bahoni ajratib bo‘lmadi: {reply_text}")
+        score = 0
+        comment = ""
+        parsed = None
+
+        # Avval JSON sifatida parse qilishga harakat qilamiz
+        if expect_json:
+            try:
+                parsed = json.loads(reply_text)
+            except json.JSONDecodeError:
+                parsed = None
+
+        if parsed is not None and isinstance(parsed, dict):
+            score_val = parsed.get("score")
+            try:
+                score = int(score_val)
+            except Exception:
                 score = 0
+            score = max(0, min(100, score))
+            comment = parsed.get("comment") or parsed.get("feedback") or ""
+        else:
+            # Fallback: matndan "Baho:" va "Izoh:" ni ajratamiz
+            lines = reply_text.split("\n")
+            comment_lines = []
+            score_line = None
+            for line in lines:
+                if line.strip().lower().startswith("baho:"):
+                    score_line = line
+                    break
+                if line.strip():
+                    comment_lines.append(line.replace("Izoh: ", "").strip())
+            if score_line:
+                score_match = re.search(r"\d+", score_line)
+                if score_match:
+                    score = int(score_match.group())
+            score = max(0, min(100, score))
+            comment = " ".join(comment_lines)
 
-        comment = " ".join(comment_lines)  # Izohlarni birlashtirish
-
-        # TestResult ni yangilash
-        if test_result is not None:
+        # finalize True bo'lsa, shu yerning o'zida yakunlaymiz
+        if finalize and test_result is not None:
             test_result.score = round(score)
             test_result.status = 'completed'
             test_result.end_time = timezone.now()
             test_result.save()
 
-            # UserTest uchun umumiy score ni yangilash
             user_test = test_result.user_test
             all_test_results = TestResult.objects.filter(user_test=user_test, status='completed')
             if all_test_results.exists():
@@ -112,8 +137,8 @@ def process_test_response(user, test_result, question, processed_answer, prompt,
 
         return {
             "score": score,
-            "result": reply_text,
-            "test_completed": True,
+            "result": reply_text if reply_text else comment,
+            "test_completed": finalize,
             "user_answer": processed_answer,
             "question_text": question.text,
         }
@@ -174,13 +199,45 @@ def finalize_test_result(test_result, score):
     # UserTest uchun umumiy score ni yangilash
     user_test = test_result.user_test
     all_test_results = TestResult.objects.filter(user_test=user_test, status='completed')
-    if all_test_results.exists():
-        total_score = sum(tr.score for tr in all_test_results) / all_test_results.count()
+    
+    # Multilevel imtihonlar uchun maxsus logika
+    if user_test.exam.level == 'multilevel':
+        # Multilevel: barcha section'lar tugatilganda UserTest ni yakunlash
+        total_sections = Section.objects.filter(exam=user_test.exam).count()
+        completed_sections = all_test_results.count()
+        
+        if completed_sections >= total_sections:
+            # Barcha section'lar tugatilgan, UserTest ni yakunlash
+            total_score = sum(tr.score for tr in all_test_results)
+            user_test.score = round(total_score / total_sections)  # O'rtacha score
+            user_test.status = 'completed'
+            user_test.save()
+            return {
+                "test_completed": True,
+                "score": round(score),
+                "exam_completed": True,
+                "completed_sections": completed_sections,
+                "total_sections": total_sections
+            }
+        else:
+            # Hali section'lar tugatilmagan
+            user_test.status = 'started'
+            user_test.save()
+            return {
+                "test_completed": True,
+                "score": round(score),
+                "exam_completed": False,
+                "completed_sections": completed_sections,
+                "total_sections": total_sections
+            }
+    else:
+        # Boshqa level'lar: har bir section uchun alohida
+        total_score = sum(tr.score for tr in all_test_results)
         user_test.score = round(total_score)
-        user_test.status = 'completed' if all_test_results.count() == Section.objects.filter(exam=user_test.exam).count() else 'started'
+        user_test.status = 'completed'  # Har bir section tugatilganda UserTest ham tugaydi
         user_test.save()
-
-    return {
-        "test_completed": True,
-        "score": round(score)
-    }
+        return {
+            "test_completed": True,
+            "score": round(score),
+            "exam_completed": True
+        }

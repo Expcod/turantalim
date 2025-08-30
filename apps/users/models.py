@@ -109,6 +109,53 @@ class User(AbstractUser):
     def __str__(self):
         return self.phone if self.phone else self.email or "No Contact"
 
+    def get_test_results(self):
+        """
+        Foydalanuvchining barcha test natijalarini olish
+        """
+        from apps.multilevel.models import UserTest, TestResult
+        
+        # Multilevel imtihonlar (faqat yakunlanganlar)
+        multilevel_results = UserTest.objects.filter(
+            user=self,
+            exam__level='multilevel',
+            status='completed'
+        ).order_by('-created_at')
+        
+        # Boshqa level'dagi imtihonlar (barcha section natijalari)
+        other_level_results = TestResult.objects.filter(
+            user_test__user=self,
+            user_test__exam__level__in=['a1', 'a2', 'b1', 'b2', 'c1'],
+            status='completed'
+        ).select_related('user_test', 'user_test__exam', 'section').order_by('-created_at')
+        
+        return {
+            'multilevel_exams': multilevel_results,
+            'section_results': other_level_results
+        }
+
+    def get_latest_multilevel_result(self):
+        """
+        Eng so'nggi multilevel imtihon natijasini olish
+        """
+        from apps.multilevel.models import UserTest
+        return UserTest.objects.filter(
+            user=self,
+            exam__level='multilevel',
+            status='completed'
+        ).order_by('-created_at').first()
+
+    def get_latest_section_results(self):
+        """
+        Eng so'nggi section natijalarini olish (a1, a2, b1, b2, c1 uchun)
+        """
+        from apps.multilevel.models import TestResult
+        return TestResult.objects.filter(
+            user_test__user=self,
+            user_test__exam__level__in=['a1', 'a2', 'b1', 'b2', 'c1'],
+            status='completed'
+        ).select_related('user_test', 'user_test__exam', 'section').order_by('-created_at')[:10]
+
 class VerificationCode(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     code = models.CharField(max_length=6)

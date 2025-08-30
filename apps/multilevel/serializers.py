@@ -8,6 +8,7 @@ import tempfile
 import os
 import logging
 from django.db.models import Avg
+from .multilevel_score import get_test_score, get_level_from_score
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +102,16 @@ class MultilevelQuestionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Question
-        fields = ["id", "text", "picture", "has_options", "user_answer", "options"]
+        fields = [
+            "id",
+            "text",
+            "picture",
+            "has_options",
+            "user_answer",
+            "options",
+            "preparation_time",
+            "response_time",
+        ]
 
     def get_options(self, obj):
         return MultilevelOptionSerializer(
@@ -131,14 +141,15 @@ class MultilevelTestSerializer(serializers.ModelSerializer):
     options = serializers.SerializerMethodField()
     picture = serializers.SerializerMethodField()
     audio = serializers.SerializerMethodField()
+    order_id = serializers.IntegerField(source='order', read_only=True)
 
     class Meta:
         model = Test
-        fields = ["id", "title", "description", "picture", "audio", "options", "sample", "text_title", "text", "constraints", "questions"]
+        fields = ["id", "order_id", "title", "description", "picture", "audio", "options", "sample", "text_title", "text", "constraints", "questions"]
 
     def get_questions(self, obj):
         return MultilevelQuestionSerializer(
-            obj.question_set.all(),
+            obj.question_set.all().order_by('id'),
             many=True,
             context=self.context
         ).data
@@ -170,7 +181,7 @@ class MultilevelSectionSerializer(serializers.ModelSerializer):
 
     def get_tests(self, obj):
         return MultilevelTestSerializer(
-            obj.test_set.all(),
+            obj.test_set.all().order_by('order'),
             many=True,
             context=self.context
         ).data
@@ -267,36 +278,52 @@ class TestResultDetailSerializer(serializers.ModelSerializer):
     def get_percentage(self, obj):
         total = self.get_total_questions(obj)
         correct = self.get_correct_answers(obj)
-        return round((correct / total * 100), 2) if total > 0 else 0
+        
+        # Use multilevel scoring for listening and reading tests
+        section_type = obj.section.type.lower()
+        if section_type in ['listening', 'reading']:
+            try:
+                score = get_test_score(section_type, correct)
+                return score
+            except ValueError:
+                return 0
+        else:
+            # For writing and speaking, return stored section score (0-75)
+            return getattr(obj, 'score', 0) or 0
 
     def get_level(self, obj):
-        percentage = self.get_percentage(obj)
-        if percentage >= 85:
-            return "C1"
-        elif percentage >= 70:
-            return "B2"
-        elif percentage >= 55:
-            return "B1"
-        elif percentage >= 40:
-            return "A2"
-        elif percentage >= 20:
-            return "A1"
+        section_type = obj.section.type.lower()
+        if section_type in ['listening', 'reading']:
+            correct = self.get_correct_answers(obj)
+            score = get_test_score(section_type, correct)
         else:
-            return "Below A1"
+            score = getattr(obj, 'score', 0) or 0
+        return get_level_from_score(score)
 
 class TestResultListSerializer(serializers.ModelSerializer):
     section = serializers.CharField(source="section.title")
     language = serializers.CharField(source="user_test.exam.language.name", default="Unknown")
-    percentage = serializers.SerializerMethodField()
+    level = serializers.CharField(source="user_test.exam.level", help_text="Exam level (multilevel, a1, a2, b1, b2, c1)")
+    percentage = serializers.SerializerMethodField(help_text="All sections: multilevel score (0-75).")
 
     class Meta:
         model = TestResult
-        fields = ['id', 'section', 'language', 'status', 'start_time', 'end_time', 'percentage']
+        fields = ['id', 'section', 'level', 'language', 'status', 'start_time', 'end_time', 'percentage']
 
     def get_percentage(self, obj):
-        total = Question.objects.filter(test__section=obj.section).count()
-        correct = UserAnswer.objects.filter(test_result=obj, is_correct=True).count()
-        return round((correct / total * 100), 2) if total > 0 else 0
+        # Listening/Reading: compute score from correct answers using tables
+        section_type = obj.section.type.lower()
+        if section_type in ['listening', 'reading']:
+            total = Question.objects.filter(test__section=obj.section).count()
+            correct = UserAnswer.objects.filter(test_result=obj, is_correct=True).count()
+            if total <= 0:
+                return 0
+            try:
+                return get_test_score(section_type, correct)
+            except ValueError:
+                return 0
+        # Writing/Speaking: use stored section score (sum of parts, max 75)
+        return getattr(obj, 'score', 0) or 0
 
 class OverallTestResultSerializer(serializers.Serializer):
     listening = serializers.SerializerMethodField()
@@ -343,16 +370,78 @@ class OverallTestResultSerializer(serializers.Serializer):
         return round(sum(percentages) / len(percentages), 2) if percentages else 0
 
     def get_overall_level(self, obj):
-        percentage = self.get_overall_percentage(obj)
+        # Get individual section results to calculate overall level properly
+        section_types = ['listening', 'reading', 'writing', 'speaking']
+        scores = []
+        
+        for section_type in section_types:
+            test_result = TestResult.objects.filter(user_test__user=obj, section__type=section_type).last()
+            if test_result:
+                if section_type in ['listening', 'reading']:
+                    # For listening and reading, use score-based level
+                    correct = UserAnswer.objects.filter(test_result=test_result, is_correct=True).count()
+                    try:
+                        score = get_test_score(section_type, correct)
+                        level_score = get_level_from_score(score)
+                        # Convert level to numeric for averaging
+                        level_numeric = self._level_to_numeric(level_score)
+                        scores.append(level_numeric)
+                    except ValueError:
+                        # Fallback to percentage-based calculation
+                        percentage = TestResultDetailSerializer(test_result, context=self.context).get_percentage(test_result)
+                        level_numeric = self._percentage_to_level_numeric(percentage)
+                        scores.append(level_numeric)
+                else:
+                    # For writing and speaking, use percentage-based level
+                    percentage = TestResultDetailSerializer(test_result, context=self.context).get_percentage(test_result)
+                    level_numeric = self._percentage_to_level_numeric(percentage)
+                    scores.append(level_numeric)
+        
+        if not scores:
+            return "Below A1"
+        
+        # Calculate average level
+        avg_level_numeric = sum(scores) / len(scores)
+        return self._numeric_to_level(avg_level_numeric)
+    
+    def _level_to_numeric(self, level):
+        """Convert CEFR level to numeric value for averaging"""
+        level_map = {
+            "C1": 5,
+            "B2": 4,
+            "B1": 3,
+            "A2": 2,
+            "A1": 1,
+            "Below A1": 0
+        }
+        return level_map.get(level, 0)
+    
+    def _percentage_to_level_numeric(self, percentage):
+        """Convert percentage to numeric level for averaging"""
         if percentage >= 85:
-            return "C1"
+            return 5  # C1
         elif percentage >= 70:
-            return "B2"
+            return 4  # B2
         elif percentage >= 55:
-            return "B1"
+            return 3  # B1
         elif percentage >= 40:
-            return "A2"
+            return 2  # A2
         elif percentage >= 20:
+            return 1  # A1
+        else:
+            return 0  # Below A1
+    
+    def _numeric_to_level(self, numeric_level):
+        """Convert numeric level back to CEFR level"""
+        if numeric_level >= 4.5:
+            return "C1"
+        elif numeric_level >= 3.5:
+            return "B2"
+        elif numeric_level >= 2.5:
+            return "B1"
+        elif numeric_level >= 1.5:
+            return "A2"
+        elif numeric_level >= 0.5:
             return "A1"
         else:
             return "Below A1"

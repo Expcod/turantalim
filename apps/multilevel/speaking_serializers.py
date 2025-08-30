@@ -43,13 +43,17 @@ class SpeakingTestAnswerSerializer(serializers.Serializer):
         }
     )
     speaking_audio = serializers.FileField(
+        required=False,
+        allow_null=True,
         error_messages={
-            'required': "Audio fayl yuklanishi shart!",
             'invalid': "Yuklanayotgan fayl audio fayl bo'lishi kerak!"
         }
     )
 
     def validate_speaking_audio(self, value):
+        if value is None:
+            return value
+            
         max_size = 25 * 1024 * 1024  # 25 MB (Whisper API limit)
         if value.size > max_size:
             raise serializers.ValidationError("Fayl hajmi 25 MB dan katta bo'lmasligi kerak!")
@@ -85,14 +89,38 @@ class BulkSpeakingTestCheckSerializer(serializers.Serializer):
         min_length=1,
         error_messages={
             'required': "Kamida bitta javob kiritilishi shart!",
-            'min_length': "Kamida bitta javob kiritilishi shart!"
+            'min_length': "Kamida bitta javob kiritilishi shart!",
+            'empty': "Javoblar ro'yxati bo'sh bo'lishi mumkin emas!"
         }
     )
 
     def validate(self, data):
         if 'answers' not in data:
             raise serializers.ValidationError("Answers maydoni kiritilishi shart!")
-        question_ids = [answer['question'].id for answer in data['answers']]
+        
+        answers = data.get('answers', [])
+        if not answers:
+            raise serializers.ValidationError("Kamida bitta javob kiritilishi shart!")
+        
+        # Check for duplicate question IDs
+        question_ids = []
+        for i, answer in enumerate(answers):
+            if 'question' not in answer:
+                raise serializers.ValidationError(f"Javob {i+1} da savol ID'si kiritilmagan!")
+            
+            question_id = answer['question'].id if hasattr(answer['question'], 'id') else answer['question']
+            question_ids.append(question_id)
+        
         if len(question_ids) != len(set(question_ids)):
             raise serializers.ValidationError("Bir xil savol ID'si bir nechta kiritilgan.")
+        
+        # Check that all answers have audio files
+        missing_audio = []
+        for i, answer in enumerate(answers):
+            if not answer.get('speaking_audio'):
+                missing_audio.append(f"Javob {i+1} (Savol ID: {question_ids[i]})")
+        
+        if missing_audio:
+            raise serializers.ValidationError(f"Quyidagi javoblar uchun audio fayl kiritilmagan: {', '.join(missing_audio)}")
+        
         return data

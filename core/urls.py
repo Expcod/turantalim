@@ -14,6 +14,7 @@ urlpatterns = [
     path('multilevel/', include("apps.multilevel.urls")),
     path('main/', include("apps.main.urls")),
     path('payment/', include("apps.payment.urls")),
+    path('visitor/', include("apps.visitor.urls")),
 ]
 
 urlpatterns += swagger_urlpatterns

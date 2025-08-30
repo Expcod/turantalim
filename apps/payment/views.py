@@ -1,24 +1,30 @@
 from rest_framework import views
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from payme import Payme
 from payme.views import PaymeWebHookAPIView
 from payme.models import PaymeTransactions
 from payme.types import response
 from apps.payment.models import ExamPayment, UserBalance, BalanceTransaction
 from apps.multilevel.models import Exam
-from .serializers import PaymentSerializer, BalanceTopUpSerializer, BalanceSerializer, BalanceTransactionSerializer
+from .serializers import PaymentSerializer, BalanceTopUpSerializer, BalanceSerializer, BalanceTransactionSerializer, PaymeTransactionSerializer
 from core.settings import base
 import requests
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
+
 
 # pylint: disable=E1101
+@method_decorator(csrf_exempt, name='dispatch')
 class PaymeCallBackAPIView(PaymeWebHookAPIView):
     """
     A view to handle Payme Webhook API calls.
     This view will handle all the Payme Webhook API events.
     """
+    permission_classes = [AllowAny]
+
     def check_perform_transaction(self, params):
         account = self.fetch_account(params)
         self.validate_amount(account, params.get('amount'))
@@ -29,24 +35,28 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
             # First try to find BalanceTransaction
             balance_topup = BalanceTransaction.objects.get(id=account.id)
             item = response.Item(
+                discount=0,
                 title=f"Balans To'ldirish - {balance_topup.user.username}",
                 price=int(balance_topup.amount * 100),
                 count=1,
-                code=10899002001000001,
-                discount=0,
+                code=str(10899002001000001),
+                units=0,
                 vat_percent=0,
+                package_code="",
             )
         except BalanceTransaction.DoesNotExist:
             # If not found, try ExamPayment
             try:
                 exam_payment = ExamPayment.objects.get(id=account.id)
                 item = response.Item(
+                    discount=0,
                     title=f"Imtihon To'lovi - {exam_payment.exam.title}",
                     price=int(exam_payment.amount * 100),
                     count=1,
-                    code=10899002001000002,
-                    discount=0,
+                    code=str(10899002001000002),
+                    units=0,
                     vat_percent=0,
+                    package_code="",
                 )
             except ExamPayment.DoesNotExist:
                 raise ValueError("Account not found")
@@ -99,16 +109,16 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
                 exam_payment.is_paid = True
                 exam_payment.save()
 
-                # Send Telegram notification
-                message = (
-                    f"✅ To'lov tasdiqlandi!\n"
-                    f"👤 Foydalanuvchi: {exam_payment.user.first_name} {exam_payment.user.last_name}\n"
-                    f"📖 Imtihon: {exam_payment.exam.title}\n"
-                    f"💰 To'lov summasi: {exam_payment.amount} UZS\n"
-                    f"💳 To'lov usuli: Payme\n"
-                    f"📅 To'lov sanasi: {exam_payment.created_at.strftime('%d.%m.%Y')}"
-                )
-                self.send_telegram_message(message)
+                            # Send Telegram notification
+            # message = (
+            #     f"✅ To'lov tasdiqlandi!\n"
+            #     f"👤 Foydalanuvchi: {exam_payment.user.first_name} {exam_payment.user.last_name}\n"
+            #     f"📖 Imtihon: {exam_payment.exam.title}\n"
+            #     f"💰 To'lov summasi: {exam_payment.amount} UZS\n"
+            #     f"💳 To'lov usuli: Payme\n"
+            #     f"📅 To'lov sanasi: {exam_payment.created_at.strftime('%d.%m.%Y')}"
+            # )
+            # self.send_telegram_message(message)
             except ExamPayment.DoesNotExist:
                 raise ValueError("Account not found")
 
@@ -189,13 +199,13 @@ class ExamPaymentAPIView(views.APIView):
     TELEGRAM_BOT_TOKEN = base.TELEGRAM_BOT_TOKEN
     TELEGRAM_CHAT_ID = base.TELEGRAM_CHAT_ID
 
-    def send_telegram_message(self, text):
-        """Telegram guruhga xabar yuborish funksiyasi"""
-        url = f"https://api.telegram.org/bot{self.TELEGRAM_BOT_TOKEN}/sendMessage"
-        payload = {"chat_id": self.TELEGRAM_CHAT_ID, "text": text}
-        response = requests.post(url, json=payload)
-        if response.status_code != 200:
-            print(f"Telegram xabar yuborishda xato: {response.text}")
+    # def send_telegram_message(self, text):
+        # """Telegram guruhga xabar yuborish funksiyasi"""
+        # url = f"https://api.telegram.org/bot{self.TELEGRAM_BOT_TOKEN}/sendMessage"
+        # payload = {"chat_id": self.TELEGRAM_CHAT_ID, "text": text}
+        # response = requests.post(url, json=payload)
+        # if response.status_code != 200:
+        #     print(f"Telegram xabar yuborishda xato: {response.text}")
 
     def post(self, request):
         """
@@ -234,15 +244,15 @@ class ExamPaymentAPIView(views.APIView):
         serializer.save()
 
         # Telegram xabar yuborish
-        message = (
-            f"✅ Imtihon To'lovi!\n"
-            f"👤 Foydalanuvchi: {request.user.first_name} {request.user.last_name}\n"
-            f"📖 Imtihon: {exam.title}\n"
-            f"💰 To'lov summasi: {amount} UZS\n"
-            f"💳 Qolgan balans: {user_balance.balance} UZS\n"
-            f"📅 To'lov sanasi: {serializer.instance.created_at.strftime('%d.%m.%Y')}"
-        )
-        self.send_telegram_message(message)
+        # message = (
+        #     f"✅ Imtihon To'lovi!\n"
+        #     f"👤 Foydalanuvchi: {request.user.first_name} {request.user.last_name}\n"
+        #     f"📖 Imtihon: {exam.title}\n"
+        #     f"💰 To'lov summasi: {amount} UZS\n"
+        #     f"💳 Qolgan balans: {user_balance.balance} UZS\n"
+        #     f"📅 To'lov sanasi: {serializer.instance.created_at.strftime('%d.%m.%Y')}"
+        # )
+        # self.send_telegram_message(message)
 
         return Response({
             "order": serializer.data,
@@ -273,7 +283,7 @@ class BalanceTopUpAPIView(views.APIView):
         payment_link = payme.initializer.generate_pay_link(
             id=balance_topup.id,
             amount=balance_topup.amount,
-            return_url="https://turantalim.vercel.app/"
+            return_url="https://turantalim.uz/"
         )
 
         return Response({
@@ -294,11 +304,210 @@ class BalanceAPIView(views.APIView):
 
 class BalanceTransactionListAPIView(views.APIView):
     permission_classes = [IsAuthenticated]
-
+    
+    @swagger_auto_schema(
+        operation_description="Foydalanuvchining imtihon uchun to'lovlarini ko'rsatish",
+        operation_summary="Foydalanuvchining imtihon to'lovlari ro'yxati",
+        manual_parameters=[
+            openapi.Parameter(
+                'page',
+                openapi.IN_QUERY,
+                description="Sahifa raqami (default: 1)",
+                type=openapi.TYPE_INTEGER,
+                default=1
+            ),
+            openapi.Parameter(
+                'page_size',
+                openapi.IN_QUERY,
+                description="Sahifadagi elementlar soni (default: 20, max: 100)",
+                type=openapi.TYPE_INTEGER,
+                default=20
+            ),
+        ],
+        responses={
+            200: openapi.Response(
+                description="Foydalanuvchining imtihon to'lovlari",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'transactions': openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Schema(
+                            type=openapi.TYPE_OBJECT,
+                            properties={
+                                'id': openapi.Schema(type=openapi.TYPE_INTEGER),
+                                'amount': openapi.Schema(type=openapi.TYPE_INTEGER),
+                                'description': openapi.Schema(type=openapi.TYPE_STRING),
+                                'created_at': openapi.Schema(type=openapi.TYPE_STRING, description="Sana va vaqt (dd.mm.yyyy hh:mm formatda)"),
+                            }
+                        )),
+                        'count': openapi.Schema(type=openapi.TYPE_INTEGER),
+                        'page': openapi.Schema(type=openapi.TYPE_INTEGER),
+                        'page_size': openapi.Schema(type=openapi.TYPE_INTEGER),
+                        'total_pages': openapi.Schema(type=openapi.TYPE_INTEGER),
+                        'message': openapi.Schema(type=openapi.TYPE_STRING),
+                    }
+                )
+            ),
+            500: openapi.Response(
+                description="Server xatosi",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'error': openapi.Schema(type=openapi.TYPE_STRING),
+                        'detail': openapi.Schema(type=openapi.TYPE_STRING),
+                    }
+                )
+            ),
+        }
+    )
     def get(self, request):
         """
-        Foydalanuvchi balans tranzaksiyalarini ko'rish.
+        Foydalanuvchining balans tranzaksiyalarini ko'rish.
         """
-        transactions = BalanceTransaction.objects.filter(user=request.user).order_by('-created_at')
-        serializer = BalanceTransactionSerializer(transactions, many=True)
-        return Response(serializer.data)
+        try:
+            # Faqat imtihon uchun to'lovlar (deduct transaction_type)
+            transactions = BalanceTransaction.objects.filter(
+                user=request.user,
+                transaction_type='deduct'  # Faqat balansdan ayirish (imtihon to'lovlari)
+            ).order_by('-created_at')
+            
+            # Pagination
+            try:
+                page = max(1, int(request.GET.get('page', 1)))
+                page_size = max(1, min(100, int(request.GET.get('page_size', 20))))
+            except (ValueError, TypeError):
+                page = 1
+                page_size = 20
+            
+            start = (page - 1) * page_size
+            end = start + page_size
+            
+            # Apply pagination
+            paginated_transactions = transactions[start:end]
+            
+            serializer = BalanceTransactionSerializer(paginated_transactions, many=True)
+            
+            return Response({
+                'transactions': serializer.data,
+                'count': transactions.count(),
+                'page': page,
+                'page_size': page_size,
+                'total_pages': (transactions.count() + page_size - 1) // page_size,
+                'message': 'Foydalanuvchining imtihon to\'lovlari'
+            })
+        except Exception as e:
+            return Response({
+                'error': 'Tranzaksiyalarni olishda xatolik yuz berdi',
+                'detail': str(e)
+            }, status=500)
+
+class PaymeTransactionListAPIView(views.APIView):
+    permission_classes = [IsAuthenticated]
+    
+    @swagger_auto_schema(
+        operation_description="Foydalanuvchining o'zining muvaffaqiyatli Payme tranzaksiyalarini ko'rsatish",
+        operation_summary="Foydalanuvchining Payme tranzaksiyalari ro'yxati",
+        manual_parameters=[
+            openapi.Parameter(
+                'page',
+                openapi.IN_QUERY,
+                description="Sahifa raqami (default: 1)",
+                type=openapi.TYPE_INTEGER,
+                default=1
+            ),
+            openapi.Parameter(
+                'page_size',
+                openapi.IN_QUERY,
+                description="Sahifadagi elementlar soni (default: 20, max: 100)",
+                type=openapi.TYPE_INTEGER,
+                default=20
+            ),
+        ],
+        responses={
+            200: openapi.Response(
+                description="Foydalanuvchining tranzaksiyalari",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'transactions': openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Schema(
+                            type=openapi.TYPE_OBJECT,
+                            properties={
+                                'id': openapi.Schema(type=openapi.TYPE_INTEGER),
+                                'amount_in_sum': openapi.Schema(type=openapi.TYPE_NUMBER),
+                                'created_at': openapi.Schema(type=openapi.TYPE_STRING, description="Sana va vaqt (dd.mm.yyyy hh:mm formatda)"),
+                            }
+                        )),
+                        'count': openapi.Schema(type=openapi.TYPE_INTEGER),
+                        'page': openapi.Schema(type=openapi.TYPE_INTEGER),
+                        'page_size': openapi.Schema(type=openapi.TYPE_INTEGER),
+                        'total_pages': openapi.Schema(type=openapi.TYPE_INTEGER),
+                        'message': openapi.Schema(type=openapi.TYPE_STRING),
+                    }
+                )
+            ),
+            500: openapi.Response(
+                description="Server xatosi",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'error': openapi.Schema(type=openapi.TYPE_STRING),
+                        'detail': openapi.Schema(type=openapi.TYPE_STRING),
+                    }
+                )
+            ),
+        }
+    )
+    def get(self, request):
+        """
+        Foydalanuvchining o'zining muvaffaqiyatli Payme tranzaksiyalarini ko'rsatish
+        """
+        try:
+            # Foydalanuvchining o'zining muvaffaqiyatli tranzaksiyalarini olish
+            # Payme transaction states: 0=created, 1=pending, 2=successful, 3=canceled
+            
+            # Foydalanuvchining BalanceTransaction va ExamPayment IDlarini olish
+            user_balance_transactions = BalanceTransaction.objects.filter(
+                user=request.user
+            ).values_list('id', flat=True)
+            
+            user_exam_payments = ExamPayment.objects.filter(
+                user=request.user
+            ).values_list('id', flat=True)
+            
+            # Barcha user account IDlarini birlashtirish
+            user_account_ids = list(user_balance_transactions) + list(user_exam_payments)
+            
+            # Faqat foydalanuvchining o'zining muvaffaqiyatli tranzaksiyalarini olish
+            successful_transactions = PaymeTransactions.objects.filter(
+                state=2,  # 2 = successful state
+                account_id__in=user_account_ids
+            ).order_by('-created_at')
+            
+            # Pagination
+            try:
+                page = max(1, int(request.GET.get('page', 1)))
+                page_size = max(1, min(100, int(request.GET.get('page_size', 20))))
+            except (ValueError, TypeError):
+                page = 1
+                page_size = 20
+            
+            start = (page - 1) * page_size
+            end = start + page_size
+            
+            # Apply pagination
+            paginated_transactions = successful_transactions[start:end]
+            
+            serializer = PaymeTransactionSerializer(paginated_transactions, many=True)
+            
+            return Response({
+                'transactions': serializer.data,
+                'count': successful_transactions.count(),
+                'page': page,
+                'page_size': page_size,
+                'total_pages': (successful_transactions.count() + page_size - 1) // page_size,
+                'message': 'Foydalanuvchining muvaffaqiyatli Payme tranzaksiyalari'
+            })
+        except Exception as e:
+            return Response({
+                'error': 'Tranzaksiyalarni olishda xatolik yuz berdi',
+                'detail': str(e)
+            }, status=500)

@@ -11,6 +11,9 @@ from apps.multilevel.models import TestResult, UserTest, Section
 from apps.multilevel.serializers import TestResultDetailSerializer
 from apps.payment.models import UserBalance
 from django.utils import timezone
+from apps.multilevel.multilevel_score import calculate_overall_test_result
+
+
 User = get_user_model()
 
 
@@ -352,3 +355,74 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
         data['user'] = user
         data['verification_code'] = verification_code
         return data
+
+
+class UserTestResultSerializer(serializers.ModelSerializer):
+    exam_name = serializers.CharField(source='exam.title', read_only=True)
+    exam_level = serializers.CharField(source='exam.level', read_only=True)
+    language = serializers.CharField(source='exam.language.name', read_only=True)
+    overall_result = serializers.SerializerMethodField()
+
+    class Meta:
+        model = UserTest
+        fields = ['id', 'exam_name', 'exam_level', 'language', 'score', 'status', 'created_at', 'overall_result']
+
+    def get_overall_result(self, obj):
+        if obj.status == 'completed' and obj.exam.level == 'multilevel':
+            result = calculate_overall_test_result(obj.id)
+            if 'error' not in result:
+                return {
+                    'total_score': result['total_score'],
+                    'average_score': result['average_score'],
+                    'level': result['level'],
+                    'is_complete': result['is_complete']
+                }
+        return None
+
+
+class SectionTestResultSerializer(serializers.ModelSerializer):
+    exam_name = serializers.CharField(source='user_test.exam.title', read_only=True)
+    exam_level = serializers.CharField(source='user_test.exam.level', read_only=True)
+    language = serializers.CharField(source='user_test.exam.language.name', read_only=True)
+    section_name = serializers.CharField(source='section.title', read_only=True)
+    section_type = serializers.CharField(source='section.type', read_only=True)
+
+    class Meta:
+        model = TestResult
+        fields = ['id', 'exam_name', 'exam_level', 'language', 'section_name', 'section_type', 'score', 'status', 'start_time', 'end_time']
+
+
+class UserProfileWithTestResultsSerializer(serializers.ModelSerializer):
+    region = RegionSerializer(read_only=True)
+    language = serializers.CharField(source='language.name', read_only=True)
+    multilevel_results = serializers.SerializerMethodField()
+    section_results = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = [
+            'id', 'first_name', 'last_name', 'phone', 'email', 'picture', 
+            'gender', 'region', 'language', 'created_at',
+            'multilevel_results', 'section_results'
+        ]
+        read_only_fields = ['id', 'created_at']
+
+    def get_multilevel_results(self, obj):
+        """Multilevel imtihon natijalarini olish"""
+        multilevel_exams = UserTest.objects.filter(
+            user=obj,
+            exam__level='multilevel',
+            status='completed'
+        ).order_by('-created_at')[:5]  # Eng so'nggi 5 ta
+        
+        return UserTestResultSerializer(multilevel_exams, many=True).data
+
+    def get_section_results(self, obj):
+        """Section natijalarini olish (a1, a2, b1, b2, c1 uchun)"""
+        section_results = TestResult.objects.filter(
+            user_test__user=obj,
+            user_test__exam__level__in=['a1', 'a2', 'b1', 'b2', 'c1'],
+            status='completed'
+        ).select_related('user_test', 'user_test__exam', 'section').order_by('-created_at')[:10]  # Eng so'nggi 10 ta
+        
+        return SectionTestResultSerializer(section_results, many=True).data

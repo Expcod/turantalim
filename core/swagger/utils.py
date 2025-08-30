@@ -11,7 +11,7 @@ main_schema_view = get_schema_view(
         description="This Documentation shows list of api and will give chance to check them",
         contact=openapi.Contact(email="info@gmail.com"),
     ),
-    public=True,
-    permission_classes=[permissions.AllowAny],
+    public=False,  # Faqat autentifikatsiya qilingan foydalanuvchilar uchun
+    permission_classes=[permissions.IsAuthenticated],  # Autentifikatsiya talab qilinadi
     generator_class=BothHttpAndHttpsSchemaGenerator,
 )

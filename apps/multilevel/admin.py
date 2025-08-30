@@ -37,6 +37,19 @@ class OptionInline(admin.TabularInline):
 
 # Question uchun maxsus ModelForm
 class QuestionAdminForm(forms.ModelForm):
+    preparation_time = forms.IntegerField(
+        label="Preparation Time (seconds)",
+        min_value=0,
+        required=False,
+        help_text="Enter preparation time in seconds for speaking questions only."
+    )
+    response_time = forms.IntegerField(
+        label="Response Time (seconds)",
+        min_value=0,
+        required=False,
+        help_text="Enter response time in seconds for speaking questions only."
+    )
+
     class Meta:
         model = Question
         fields = '__all__'
@@ -46,12 +59,22 @@ class QuestionAdminForm(forms.ModelForm):
         has_options = cleaned_data.get('has_options')
         answer = cleaned_data.get('answer')
         test = cleaned_data.get('test')
+        preparation_time = cleaned_data.get('preparation_time')
+        response_time = cleaned_data.get('response_time')
 
         section_type = None
         if test and test.section:
             section_type = test.section.type
 
         if section_type in ['writing', 'speaking']:
+            if section_type == 'speaking':
+                if preparation_time is not None and preparation_time < 0:
+                    raise ValidationError("Preparation time cannot be negative!")
+                if response_time is not None and response_time < 0:
+                    raise ValidationError("Response time cannot be negative!")
+            else:
+                if preparation_time is not None or response_time is not None:
+                    raise ValidationError("Preparation and response times are only applicable to speaking tests!")
             return cleaned_data
 
         if not has_options and not answer:
@@ -83,12 +106,15 @@ class QuestionAdminForm(forms.ModelForm):
             if correct_count > 1:
                 raise ValidationError("Faqat bitta variant to‘g‘ri bo‘lishi mumkin!")
 
+        if preparation_time is not None or response_time is not None:
+            raise ValidationError("Preparation and response times are only applicable to speaking tests!")
+
         return cleaned_data
 
 # Exam Admin
 @admin.register(Exam)
 class ExamAdmin(admin.ModelAdmin):
-    list_display = ('title', 'language', 'level', 'price','status')
+    list_display = ('id', 'title', 'language', 'level', 'price','status')
     search_fields = ('title', 'description')
     list_filter = ('language', 'level')
 
@@ -108,12 +134,57 @@ class SectionAdmin(admin.ModelAdmin):
 # Test Admin
 @admin.register(Test)
 class TestAdmin(admin.ModelAdmin):
-    list_display = ('title', 'section', 'order')
+    list_display = ('id', 'title', 'section', 'order')
     search_fields = ('title', 'description', 'text', 'options_array', 'constraints')
     list_filter = ('section__exam', 'section__type')
+    fieldsets = (
+        ('Asosiy ma\'lumotlar', {
+            'fields': ('section', 'title', 'description', 'order')
+        }),
+        ('Kontent', {
+            'fields': ('picture', 'audio', 'text_title', 'text', 'options_array', 'sample', 'constraints')
+        }),
+        ('Writing test vaqtlari', {
+            'fields': ('response_time', 'upload_time'),
+            'description': 'Faqat writing section uchun javob berish va rasm yuklash vaqtini belgilang (sekundlarda)',
+            'classes': ('collapse',)
+        }),
+    )
 
     def get_queryset(self, request):
         return super().get_queryset(request).select_related('section__exam')
+
+    def get_fieldsets(self, request, obj=None):
+        fieldsets = super().get_fieldsets(request, obj)
+        if obj and obj.section and obj.section.type != 'writing':
+            # Writing bo'lmagan sectionlar uchun vaqt maydonlarini yashirish
+            fieldsets = list(fieldsets)
+            fieldsets = [fieldset for fieldset in fieldsets if fieldset[0] != 'Writing test vaqtlari']
+        return fieldsets
+
+    def save_model(self, request, obj, form, change):
+        # Writing bo'lmagan sectionlar uchun vaqt maydonlarini tozalash
+        if obj.section and obj.section.type != 'writing':
+            obj.response_time = None
+            obj.upload_time = None
+        super().save_model(request, obj, form, change)
+
+    def get_list_display(self, request):
+        list_display = list(super().get_list_display(request))
+        # Writing section uchun vaqt maydonlarini ko'rsatish
+        if 'response_time' not in list_display:
+            list_display.append('response_time')
+        if 'upload_time' not in list_display:
+            list_display.append('upload_time')
+        return list_display
+
+    def get_fieldsets(self, request, obj=None):
+        fieldsets = super().get_fieldsets(request, obj)
+        if obj and obj.section and obj.section.type != 'writing':
+            # Writing bo'lmagan sectionlar uchun vaqt maydonlarini yashirish
+            fieldsets = list(fieldsets)
+            fieldsets = [fieldset for fieldset in fieldsets if fieldset[0] != 'Writing test vaqtlari']
+        return fieldsets
 
 # Question Admin
 @admin.register(Question)
@@ -129,6 +200,9 @@ class QuestionAdmin(admin.ModelAdmin):
     text_short.short_description = "Savol matni"
 
     def save_model(self, request, obj, form, change):
+        if form.cleaned_data.get('test') and form.cleaned_data.get('test').section.type == 'speaking':
+            obj.preparation_time = form.cleaned_data.get('preparation_time')
+            obj.response_time = form.cleaned_data.get('response_time')
         super().save_model(request, obj, form, change)
 
 # TestResult Admin
