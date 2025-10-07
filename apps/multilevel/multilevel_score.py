@@ -608,11 +608,11 @@ def calculate_overall_test_result(user_test_id):
     try:
         user_test = UserTest.objects.get(id=user_test_id)
         
-        # Check if this is a multilevel exam
-        is_multilevel = user_test.exam.level == 'multilevel'
+        # Check if this is a multilevel or tys exam
+        is_multilevel = user_test.exam.level in ['multilevel', 'tys']
         
         if is_multilevel:
-            # For multilevel exams, check if all sections are completed
+            # For multilevel and TYS exams, check if all sections are completed
             total_sections = Section.objects.filter(exam=user_test.exam).count()
             completed_sections = TestResult.objects.filter(
                 user_test=user_test,
@@ -622,7 +622,7 @@ def calculate_overall_test_result(user_test_id):
             # If not all sections are completed, return error
             if completed_sections < total_sections:
                 return {
-                    'error': f'Multilevel imtihon yakunlanmagan. {completed_sections}/{total_sections} bo\'lim tugatilgan.',
+                    'error': f'Multilevel/TYS imtihon yakunlanmagan. {completed_sections}/{total_sections} bo\'lim tugatilgan.',
                     'user_test_id': user_test_id,
                     'completed_sections': completed_sections,
                     'total_sections': total_sections,
@@ -662,7 +662,7 @@ def calculate_overall_test_result(user_test_id):
         
         # Calculate average score based on exam type
         if is_multilevel:
-            # For multilevel: divide by 4 sections
+            # For multilevel and TYS: divide by 4 sections
             average_score = total_score / 4 if completed_sections == 4 else 0
             max_possible_score = 300  # 4 sections * 75 points each
         else:
@@ -691,7 +691,8 @@ def calculate_overall_test_result(user_test_id):
             'completed_sections': completed_sections,
             'total_sections': 4 if is_multilevel else 1,
             'is_complete': True,
-            'is_multilevel': is_multilevel
+            'is_multilevel': is_multilevel,
+            'exam_type': 'multilevel_tys' if is_multilevel else 'single_section'
         }
         
     except UserTest.DoesNotExist:

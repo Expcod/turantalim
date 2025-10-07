@@ -1,0 +1,268 @@
+Keling, speaking section'dagi muammoni chuqur tahlil qilamiz. Console loglari va backend loglarini ko'rib chiqib, muammoni ildizigacha aniqlaymiz.
+
+## 🔍 Console Loglari Tahlili
+
+Console loglarida quyidagi kritik xatoliklar ko'rinmoqda:
+
+1. **400 Bad Request Error**: `api.turantalim.uz/mu...stcheck/speaking/:1`
+2. **TypeError**: `Cannot read properties of undefined (reading 'filter')`
+3. **Speaking submission error**
+
+## 🚨 Muammo Tahlili
+
+### 1. Frontend Xatoliklari
+- **TypeError**: Frontend'da ma'lumotlar undefined bo'lib qolgan
+- **Data Loss**: Speaking javoblari to'g'ri saqlanmagan
+- **State Management**: Test holati to'g'ri boshqarilmagan
+
+### 2. Backend API Xatoliklari
+- **400 Bad Request**: Speaking API'ga noto'g'ri ma'lumot yuborilgan
+- **Data Validation**: Javoblar to'g'ri formatda emas
+
+## 🔧 Backend Loglarini Tekshirish
+
+Keling, backend loglarini ko'rib chiqamiz:
+
+
+[1 tool called]
+
+Endi Django loglarini ko'rib chiqamiz:
+
+
+[1 tool called]
+
+Django log fayli topilmadi. Keling, boshqa joylardan loglarni qidiramiz:
+
+
+[1 tool called]
+
+Endi Django log faylini ko'rib chiqamiz:
+
+
+[1 tool called]
+
+Speaking API'da Bad Request xatoligi bor! Keling, batafsil ko'ramiz:
+
+
+[1 tool called]
+
+Endi nginx loglarini ko'rib chiqamiz:
+
+
+[1 tool called]
+
+Endi speaking API'ni to'g'ridan-to'g'ri test qilamiz. Avval mavjud speaking view kodini ko'rib chiqamiz:
+
+
+[1 tool called]
+
+Endi serializer'ni ko'rib chiqamiz:
+
+
+[1 tool called]
+
+Endi muammoni aniqladim! Keling, speaking API'da debug qo'shamiz va muammoni hal qilamiz:
+
+
+[1 tool called]
+
+Endi speaking API'da debug qo'shdik. Keling, frontend'dan qanday so'rov yuborilayotganini ko'rib chiqamiz. Console loglarida 400 xatolik bor, bu frontend'dan noto'g'ri ma'lumot yuborilayotganini ko'rsatadi.
+
+## 🔍 Muammo Tahlili
+
+### 1. **Frontend Xatoliklari**
+- **TypeError**: `Cannot read properties of undefined (reading 'filter')` - Frontend'da ma'lumotlar undefined
+- **Data Loss**: Speaking javoblari to'g'ri saqlanmagan
+- **State Management**: Test holati to'g'ri boshqarilmagan
+
+### 2. **Backend API Xatoliklari**
+- **400 Bad Request**: Speaking API'ga noto'g'ri ma'lumot yuborilgan
+- **Data Validation**: Javoblar to'g'ri formatda emas
+
+### 3. **Muammo Sabablari**
+
+#### **A) Frontend Data Format Xatoligi**
+Frontend'dan speaking API'ga yuborilayotgan ma'lumotlar noto'g'ri formatda:
+
+```javascript
+// Noto'g'ri format (frontend'dan)
+{
+  "test_result_id": 330,
+  "answers": [] // Bo'sh array yoki undefined
+}
+
+// To'g'ri format (kerakli)
+{
+  "test_result_id": 330,
+  "answers": [
+    {
+      "question": 1,
+      "speaking_audio": audioFile
+    }
+  ]
+}
+```
+
+#### **B) Audio Recording Xatoligi**
+- Audio fayl yozilgan lekin frontend'da to'g'ri saqlanmagan
+- FormData to'g'ri tayyorlanmagan
+- Audio fayl question bilan bog'lanmagan
+
+#### **C) State Management Xatoligi**
+- Speaking section tugaganda state to'g'ri yangilanmagan
+- Javoblar local storage'da saqlanmagan
+- Test holati to'g'ri boshqarilmagan
+
+## ��️ Yechim
+
+### 1. **Frontend Debug Qo'shish**
+```javascript
+// Speaking submission oldidan debug
+console.log('Speaking submission data:', {
+  test_result_id: testResultId,
+  answers: answers,
+  audioFiles: audioFiles
+});
+
+// FormData tayyorlash
+const formData = new FormData();
+formData.append('test_result_id', testResultId);
+
+answers.forEach((answer, index) => {
+  console.log(`Adding answer ${index}:`, answer);
+  formData.append(`answers[${index}][question]`, answer.question);
+  formData.append(`answers[${index}][speaking_audio]`, answer.audioFile);
+});
+
+// FormData ni tekshirish
+for (let [key, value] of formData.entries()) {
+  console.log(`${key}:`, value);
+}
+```
+
+### 2. **Backend Validation Kuchaytirish**
+```python
+# Speaking API'da qo'shilgan debug loglar
+logger.info(f"Speaking API called with content_type: {request.content_type}")
+logger.info(f"Request data keys: {list(request.data.keys())}")
+logger.info(f"Request FILES keys: {list(request.FILES.keys())}")
+```
+
+### 3. **Error Handling Kuchaytirish**
+```python
+# Validation xatoliklarini batafsil ko'rsatish
+if not serializer.is_valid():
+    return Response({
+        "error": "Validation xatosi",
+        "details": serializer.errors,
+        "received_data": str(data)
+    }, status=status.HTTP_400_BAD_REQUEST)
+```
+
+## �� Keyingi Qadamlar
+
+### 1. **Frontend'ni Test Qilish**
+- Speaking section'da audio yozish
+- Console'da debug ma'lumotlarni ko'rish
+- FormData to'g'ri tayyorlanganini tekshirish
+
+### 2. **Backend Loglarini Kuzatish**
+```bash
+# Real-time loglarni ko'rish
+sudo tail -f /var/log/django.log | grep speaking
+
+# Gunicorn loglarini ko'rish
+sudo journalctl -u gunicorn -f
+```
+
+### 3. **API Response'ni Tekshirish**
+- Frontend'dan speaking API'ga so'rov yuborish
+- Backend loglarida debug ma'lumotlarni ko'rish
+- Validation xatoliklarini aniqlash
+
+## �� Frontend Maslahatlari
+
+### 1. **Audio Recording**
+```javascript
+// Audio yozish tugaganda
+onRecordingComplete = (audioBlob, questionId) => {
+  console.log('Recording completed:', { questionId, audioBlob });
+  
+  // Audio faylni saqlash
+  const audioFile = new File([audioBlob], `speaking_${questionId}.wav`, {
+    type: 'audio/wav'
+  });
+  
+  // State'ga qo'shish
+  setAnswers(prev => [...prev, {
+    question: questionId,
+    audioFile: audioFile
+  }]);
+};
+```
+
+### 2. **Form Submission**
+```javascript
+// Speaking test tugatish
+const submitSpeakingTest = async () => {
+  if (answers.length === 0) {
+    alert('Kamida bitta savolga javob bering!');
+    return;
+  }
+  
+  const formData = new FormData();
+  formData.append('test_result_id', testResultId);
+  
+  answers.forEach((answer, index) => {
+    formData.append(`answers[${index}][question]`, answer.question);
+    formData.append(`answers[${index}][speaking_audio]`, answer.audioFile);
+  });
+  
+  try {
+    const response = await fetch('/api/multilevel/testcheck/speaking/', {
+      method: 'POST',
+      body: formData
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      console.error('Speaking submission error:', error);
+      throw new Error(error.error || 'Submission failed');
+    }
+    
+    const result = await response.json();
+    console.log('Speaking completed:', result);
+    
+  } catch (error) {
+    console.error('Error:', error);
+    alert(error.message);
+  }
+};
+```
+
+### 3. **State Management**
+```javascript
+// Speaking answers state
+const [speakingAnswers, setSpeakingAnswers] = useState([]);
+const [isRecording, setIsRecording] = useState(false);
+
+// Audio yozish boshlash
+const startRecording = (questionId) => {
+  setIsRecording(true);
+  // Recording logic...
+};
+
+// Audio yozish tugatish
+const stopRecording = (questionId, audioBlob) => {
+  setIsRecording(false);
+  
+  const audioFile = new File([audioBlob], `speaking_${questionId}.wav`);
+  
+  setSpeakingAnswers(prev => [...prev, {
+    question: questionId,
+    audioFile: audioFile
+  }]);
+};
+```
+
+Bu o'zgarishlar orqali speaking API'dagi muammoni aniqlab, frontend va backend o'rtasidagi ma'lumot almashinuvi to'g'ri ishlashini ta'minlaymiz! 🎯

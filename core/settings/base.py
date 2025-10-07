@@ -30,10 +30,10 @@ env.read_env(os.path.join(BASE_DIR, ".env"))
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = env.str("SECRET_KEY")
+SECRET_KEY = os.environ.get("SECRET_KEY") or env.str("SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = env.bool("DEBUG")
+DEBUG = os.environ.get("DEBUG", "False").lower() == "true" or env.bool("DEBUG")
 
 ALLOWED_HOSTS = ["*"]
 
@@ -69,24 +69,24 @@ THIRD_PARTY_APPS = [
 INSTALLED_APPS = DJANGO_APPS + CUSTOM_APPS + THIRD_PARTY_APPS
 
 #payme settings
-PAYME_ID = env.str("PAYME_ID")  
-PAYME_KEY = env.str("PAYME_KEY")  
+PAYME_ID = os.environ.get("PAYME_ID") or env.str("PAYME_ID")  
+PAYME_KEY = os.environ.get("PAYME_KEY") or env.str("PAYME_KEY")  
 PAYME_ACCOUNT_FIELD = "id"  
 PAYME_AMOUNT_FIELD = "amount" 
 PAYME_ACCOUNT_MODEL = "apps.payment.models.ExamPayment"  
 PAYME_ONE_TIME_PAYMENT = True  
 
 #telegram settings
-TELEGRAM_BOT_TOKEN = env.str("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = env.str("TELEGRAM_CHAT_ID")
-TELEGRAM_VISITOR_CHAT_ID = env.str("TELEGRAM_VISITOR_CHAT_ID")  # Visitor app uchun alohida chat ID
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN") or env.str("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID") or env.str("TELEGRAM_CHAT_ID")
+TELEGRAM_VISITOR_CHAT_ID = os.environ.get("TELEGRAM_VISITOR_CHAT_ID") or env.str("TELEGRAM_VISITOR_CHAT_ID")  # Visitor app uchun alohida chat ID
 
 
 #openai settings
-OPENAI_API_KEY = env.str("OPENAI_API_KEY")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY") or env.str("OPENAI_API_KEY")
 
 # Eskiz settings
-ESKIZ_TOKEN = env.str("ESKIZ_TOKEN")
+ESKIZ_TOKEN = os.environ.get("ESKIZ_TOKEN") or env.str("ESKIZ_TOKEN")
 ESKIZ_CALLBACK_URL = ""
 
 # Email sozlamalari (Gmail uchun)
@@ -103,6 +103,14 @@ CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
+
+# Celery Beat Schedule
+CELERY_BEAT_SCHEDULE = {
+    'check-expired-tests': {
+        'task': 'apps.multilevel.tasks.check_expired_tests',
+        'schedule': 60.0,  # Har 60 soniyada (1 daqiqada) tekshirish
+    },
+}
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
@@ -128,15 +136,53 @@ SIMPLE_JWT = {
 }
 
 SWAGGER_SETTINGS = {
-   'SECURITY_DEFINITIONS': {
-      'Bearer': {
-            'type': 'apiKey',
-            'name': 'Authorization',
-            'in': 'header'
+   'SECURITY_DEFINITIONS':
+   {
+      'Bearer':
+      {
+         'type': 'apiKey',
+         'name': 'Authorization',
+         'in': 'header'
       }
-   },
-   "LOGIN_URL": "/admin/login/",  # Login sahifasi yo‘li
-   "LOGOUT_URL": "/admin/logout/",  # Logout sahifasi yo‘li
+   }
+}
+
+# Logging configuration
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+        'file': {
+            'class': 'logging.FileHandler',
+            'filename': '/var/log/django.log',
+            'formatter': 'verbose',
+        },
+    },
+    'root': {
+        'handlers': ['console', 'file'],
+        'level': 'INFO',
+    },
+    'loggers': {
+        'apps.users': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
 }
 
 MIDDLEWARE = [
@@ -233,3 +279,8 @@ AUTHENTICATION_BACKENDS = [
     'apps.users.backends.CustomAuthBackend',  # Sizning maxsus backend’ingiz
     'django.contrib.auth.backends.ModelBackend',  # Django’ning standart backend’i
 ]
+
+# Upload limits (raise for multipart/form-data with audio uploads)
+# These guard against 400 errors when request body exceeds defaults
+DATA_UPLOAD_MAX_MEMORY_SIZE = 50 * 1024 * 1024  # 50MB
+FILE_UPLOAD_MAX_MEMORY_SIZE = 50 * 1024 * 1024  # 50MB

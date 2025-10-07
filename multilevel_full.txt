@@ -1,0 +1,740 @@
+# 🎯 Multilevel va TYS Imtihonlari - Frontend Integratsiya Dokumentatsiyasi
+
+## �� Mundarija
+
+1. [Tizim Umumiy Tavsifi](#tizim-umumiy-tavsifi)
+2. [API Endpointlar](#api-endpointlar)
+3. [Frontend Integratsiya Ketma-ketligi](#frontend-integratsiya-ketma-ketligi)
+4. [API Response Formatlari](#api-response-formatlari)
+5. [Xatoliklar va Xabarlar](#xatoliklar-va-xabarlar)
+6. [Frontend UI Maslahatlari](#frontend-ui-maslahatlari)
+7. [Kod Namunalari](#kod-namunalari)
+8. [Test Qilish](#test-qilish)
+
+---
+
+## ��️ Tizim Umumiy Tavsifi
+
+### Asosiy Prinsip
+Multilevel va TYS imtihonlari uchun **real-time natija ko'rsatilmaydi**. Har bir section tugaganda faqat section completion xabari ko'rsatiladi. Umumiy natija faqat barcha 4 section tugagandan keyin mavjud bo'ladi.
+
+### Imtihon Tuzilishi
+- **4 ta Section**: Listening, Reading, Writing, Speaking
+- **Har section max balli**: 75 ball
+- **Umumiy max ball**: 300 ball (4 × 75)
+- **CEFR Darajasi**: B1, B2, C1 (umumiy ball asosida)
+
+---
+
+## 🔗 API Endpointlar
+
+### 1. Test So'rash
+```
+POST /api/multilevel/test/
+```
+**Vazifa**: Yangi test boshlash
+
+### 2. Test Preview
+```
+GET /api/multilevel/test/preview/
+```
+**Vazifa**: Test strukturasi va sectionlarni ko'rish
+
+### 3. Section Testlarni Tekshirish
+
+#### Listening Test
+```
+POST /api/multilevel/testcheck/listening/
+```
+
+#### Reading Test
+```
+POST /api/multilevel/testcheck/reading/
+```
+
+#### Writing Test
+```
+POST /api/multilevel/testcheck/writing/
+```
+
+#### Speaking Test
+```
+POST /api/multilevel/testcheck/speaking/
+```
+
+### 4. Umumiy Natija
+```
+GET /api/multilevel/exam-results/multilevel-tys/
+```
+**Vazifa**: Barcha sectionlar tugagandan keyin umumiy natijani olish
+
+---
+
+## �� Frontend Integratsiya Ketma-ketligi
+
+### Bosqich 1: Test Boshlash
+```javascript
+// 1. Test preview olish
+const preview = await fetch('/api/multilevel/test/preview/?level=multilevel', {
+    headers: { 'Authorization': `Bearer ${token}` }
+});
+
+// 2. Test so'rash
+const testRequest = await fetch('/api/multilevel/test/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify({
+        language: 1,
+        level: 'multilevel',
+        test: 'listening',
+        exam_id: examId
+    })
+});
+```
+
+### Bosqich 2: Section Testlari
+```javascript
+// Har bir section uchun alohida
+const sectionOrder = ['listening', 'reading', 'writing', 'speaking'];
+
+for (const sectionType of sectionOrder) {
+    // Section testini ochish
+    await openSection(sectionType);
+    
+    // Foydalanuvchi javob beradi...
+    
+    // Section tugaganda tekshirish
+    const result = await checkSection(sectionType, answers);
+    
+    if (result.section_completed) {
+        // Section tugatildi
+        showSectionCompletion(result);
+        await moveToNextSection();
+    }
+}
+```
+
+### Bosqich 3: Umumiy Natija
+```javascript
+// Barcha sectionlar tugagandan keyin
+const overallResult = await fetch(`/api/multilevel/exam-results/multilevel-tys/?user_test_id=${userTestId}`);
+const result = await overallResult.json();
+
+if (result.success) {
+    showOverallResult(result);
+}
+```
+
+---
+
+## 📊 API Response Formatlari
+
+### 1. Section Completion Response
+
+#### ✅ Muvaffaqiyatli Section Tugash
+```json
+{
+  "answers": [
+    {
+      "id": 1,
+      "question": 1,
+      "user_answer": "Javob...",
+      "is_correct": true,
+      "score": 15
+    }
+  ],
+  "section_completed": true,
+  "section_score": 65,
+  "message": "Listening section tugatildi. Barcha sectionlar tugagandan keyin umumiy natija ko'rsatiladi."
+}
+```
+
+#### ❌ Xatolik Response
+```json
+{
+  "error": "TestResult topilmadi yoki faol emas!"
+}
+```
+
+### 2. Umumiy Natija Response
+
+#### ✅ Muvaffaqiyatli Umumiy Natija
+```json
+{
+  "success": true,
+  "exam_info": {
+    "exam_id": 1,
+    "exam_name": "CEFR Multilevel Test",
+    "exam_level": "MULTILEVEL",
+    "language": "English",
+    "status": "completed",
+    "created_at": "2024-01-15T10:30:00Z",
+    "completed_at": "2024-01-15T14:45:00Z"
+  },
+  "section_results": {
+    "listening": {
+      "section_name": "Listening",
+      "score": 65,
+      "max_score": 75,
+      "status": "completed",
+      "completed_at": "2024-01-15T11:15:00Z"
+    },
+    "reading": {
+      "section_name": "Reading",
+      "score": 58,
+      "max_score": 75,
+      "status": "completed",
+      "completed_at": "2024-01-15T12:30:00Z"
+    },
+    "writing": {
+      "section_name": "Writing",
+      "score": 62,
+      "max_score": 75,
+      "status": "completed",
+      "completed_at": "2024-01-15T13:45:00Z"
+    },
+    "speaking": {
+      "section_name": "Speaking",
+      "score": 60,
+      "max_score": 75,
+      "status": "completed",
+      "completed_at": "2024-01-15T14:45:00Z"
+    }
+  },
+  "overall_result": {
+    "total_score": 245,
+    "max_possible_score": 300,
+    "average_score": 61.25,
+    "level": "B2",
+    "level_description": "O'rtadan yuqori daraja - mustaqil foydalanuvchi",
+    "completed_sections": 4,
+    "total_sections": 4,
+    "is_complete": true
+  },
+  "level_ranges": {
+    "B1": "38-50 ball",
+    "B2": "51-64 ball",
+    "C1": "65-75 ball"
+  }
+}
+```
+
+#### ❌ Hali Tugatilmagan Response
+```json
+{
+  "success": false,
+  "error": "Multilevel/TYS imtihon yakunlanmagan. 2/4 bo'lim tugatilgan."
+}
+```
+
+---
+
+## ⚠️ Xatoliklar va Xabarlar
+
+### Umumiy Xatoliklar
+| Xatolik Kodi | Xabar | Tushuntirish |
+|---------------|-------|---------------|
+| 400 | Validation xatosi | Request body noto'g'ri |
+| 403 | Ruxsat yo'q | Foydalanuvchi bu testni ko'ra olmaydi |
+| 404 | Topilmadi | Test yoki natija mavjud emas |
+| 500 | Server xatosi | Ichki xatolik |
+
+### Section Completion Xabarlari
+- **Listening**: "Listening section tugatildi. Barcha sectionlar tugagandan keyin umumiy natija ko'rsatiladi."
+- **Reading**: "Reading section tugatildi. Barcha sectionlar tugagandan keyin umumiy natija ko'rsatiladi."
+- **Writing**: "Writing section tugatildi. Barcha sectionlar tugagandan keyin umumiy natija ko'rsatiladi."
+- **Speaking**: "Speaking section tugatildi. Barcha sectionlar tugagandan keyin umumiy natija ko'rsatiladi."
+
+---
+
+## �� Frontend UI Maslahatlari
+
+### 1. Progress Tracking
+```javascript
+const progressData = {
+  listening: { status: 'completed', score: 65 },
+  reading: { status: 'completed', score: 58 },
+  writing: { status: 'in_progress', score: 0 },
+  speaking: { status: 'not_started', score: 0 }
+};
+
+// Progress bar ko'rsatish
+showProgressBar(progressData);
+```
+
+### 2. Section Status Ko'rsatish
+- ✅ **Tugatildi**: Yashil belgi + ball
+- �� **Davom etmoqda**: Sariq belgi + "Tugatilmoqda"
+- ⏳ **Kutilmoqda**: Kulrang belgi + "Kutilmoqda"
+
+### 3. Completion Message
+```javascript
+function showSectionCompletion(result) {
+  const message = `
+    <div class="section-completion">
+      <h3>✅ ${getSectionName(sectionType)} Tugatildi</h3>
+      <p>Ball: ${result.section_score}/75</p>
+      <p class="info">${result.message}</p>
+    </div>
+  `;
+  
+  showModal(message);
+}
+```
+
+### 4. Final Result Button
+```javascript
+// Barcha sectionlar tugaganda
+if (allSectionsCompleted) {
+  showButton('Umumiy Natijani Ko\'rish', async () => {
+    const result = await getOverallResult();
+    showOverallResultModal(result);
+  });
+}
+```
+
+---
+
+## 💻 Kod Namunalari
+
+### 1. Test Boshqaruv Klassi
+```javascript
+class MultilevelExamManager {
+  constructor(userTestId) {
+    this.userTestId = userTestId;
+    this.sections = ['listening', 'reading', 'writing', 'speaking'];
+    this.currentSectionIndex = 0;
+    this.sectionResults = {};
+  }
+
+  async startExam() {
+    try {
+      // Test preview olish
+      const preview = await this.getTestPreview();
+      
+      // Birinchi section'ni ochish
+      await this.openSection(this.sections[0]);
+      
+    } catch (error) {
+      console.error('Imtihon boshlashda xatolik:', error);
+      this.showError(error.message);
+    }
+  }
+
+  async completeSection(sectionType, answers) {
+    try {
+      const result = await this.checkSection(sectionType, answers);
+      
+      if (result.section_completed) {
+        // Section natijasini saqlash
+        this.sectionResults[sectionType] = result.section_score;
+        
+        // Completion xabarini ko'rsatish
+        this.showSectionCompletion(result);
+        
+        // Keyingi section'ga o'tish
+        await this.moveToNextSection();
+        
+        return true;
+      } else {
+        throw new Error(result.error || 'Section tugatilmadi');
+      }
+      
+    } catch (error) {
+      console.error('Section tugatishda xatolik:', error);
+      this.showError(error.message);
+      return false;
+    }
+  }
+
+  async moveToNextSection() {
+    this.currentSectionIndex++;
+    
+    if (this.currentSectionIndex < this.sections.length) {
+      // Keyingi section'ni ochish
+      await this.openSection(this.sections[this.currentSectionIndex]);
+    } else {
+      // Barcha sectionlar tugatildi
+      await this.showOverallResult();
+    }
+  }
+
+  async showOverallResult() {
+    try {
+      const result = await this.getOverallResult();
+      
+      if (result.success) {
+        this.displayOverallResult(result);
+      } else {
+        this.showMessage(result.error);
+      }
+      
+    } catch (error) {
+      console.error('Umumiy natijani olishda xatolik:', error);
+      this.showError(error.message);
+    }
+  }
+
+  async checkSection(sectionType, answers) {
+    const endpoint = `/api/multilevel/testcheck/${sectionType}/`;
+    
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.getToken()}`
+      },
+      body: JSON.stringify({
+        test_result_id: this.getTestResultId(sectionType),
+        answers: answers
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return await response.json();
+  }
+
+  async getOverallResult() {
+    const response = await fetch(
+      `/api/multilevel/exam-results/multilevel-tys/?user_test_id=${this.userTestId}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${this.getToken()}`
+        }
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return await response.json();
+  }
+
+  showSectionCompletion(result) {
+    const message = `
+      <div class="section-completion-success">
+        <h3>🎉 Section Tugatildi!</h3>
+        <p>Ball: ${result.section_score}/75</p>
+        <p class="info-message">${result.message}</p>
+        <button onclick="examManager.moveToNextSection()" class="btn-next">
+          Keyingi Section
+        </button>
+      </div>
+    `;
+    
+    this.showModal(message);
+  }
+
+  displayOverallResult(result) {
+    const message = `
+      <div class="overall-result">
+        <h2>�� Imtihon Natijasi</h2>
+        
+        <div class="section-scores">
+          <h3>Section Natijalari:</h3>
+          <div class="score-grid">
+            <div class="score-item">
+              <span class="section">Listening</span>
+              <span class="score">${result.section_results.listening.score}/75</span>
+            </div>
+            <div class="score-item">
+              <span class="section">Reading</span>
+              <span class="score">${result.section_results.reading.score}/75</span>
+            </div>
+            <div class="score-item">
+              <span class="section">Writing</span>
+              <span class="score">${result.section_results.writing.score}/75</span>
+            </div>
+            <div class="score-item">
+              <span class="section">Speaking</span>
+              <span class="score">${result.section_results.speaking.score}/75</span>
+            </div>
+          </div>
+        </div>
+        
+        <div class="overall-score">
+          <h3>Umumiy Natija:</h3>
+          <div class="total-score">
+            <span class="score">${result.overall_result.total_score}</span>
+            <span class="max">/300</span>
+          </div>
+          <div class="average-score">
+            O'rtacha: ${result.overall_result.average_score} ball
+          </div>
+          <div class="cefr-level">
+            CEFR Darajasi: <strong>${result.overall_result.level}</strong>
+          </div>
+          <div class="level-description">
+            ${result.overall_result.level_description}
+          </div>
+        </div>
+      </div>
+    `;
+    
+    this.showModal(message);
+  }
+
+  showModal(content) {
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.innerHTML = `
+      <div class="modal-content">
+        ${content}
+      </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // Modal'ni yopish
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        modal.remove();
+      }
+    });
+  }
+
+  showError(message) {
+    this.showModal(`
+      <div class="error-message">
+        <h3>❌ Xatolik</h3>
+        <p>${message}</p>
+        <button onclick="this.parentElement.parentElement.parentElement.remove()" class="btn-close">
+          Yopish
+        </button>
+      </div>
+    `);
+  }
+
+  showMessage(message) {
+    this.showModal(`
+      <div class="info-message">
+        <h3>ℹ️ Ma'lumot</h3>
+        <p>${message}</p>
+        <button onclick="this.parentElement.parentElement.parentElement.remove()" class="btn-close">
+          Yopish
+        </button>
+      </div>
+    `);
+  }
+
+  getToken() {
+    return localStorage.getItem('access_token');
+  }
+
+  getTestResultId(sectionType) {
+    // Bu metod section uchun test_result_id ni qaytarishi kerak
+    // Bu ma'lumotni test boshlashda olish kerak
+    return this.testResultIds[sectionType];
+  }
+}
+```
+
+### 2. CSS Stil
+```css
+.section-completion-success {
+  text-align: center;
+  padding: 20px;
+}
+
+.section-completion-success h3 {
+  color: #28a745;
+  margin-bottom: 15px;
+}
+
+.info-message {
+  background: #e7f3ff;
+  border: 1px solid #b3d9ff;
+  border-radius: 8px;
+  padding: 15px;
+  margin: 15px 0;
+  color: #0066cc;
+}
+
+.overall-result {
+  padding: 20px;
+}
+
+.score-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 15px;
+  margin: 20px 0;
+}
+
+.score-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+.total-score {
+  font-size: 2em;
+  font-weight: bold;
+  text-align: center;
+  margin: 20px 0;
+}
+
+.cefr-level {
+  font-size: 1.2em;
+  text-align: center;
+  margin: 15px 0;
+  color: #28a745;
+}
+
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background: white;
+  border-radius: 12px;
+  max-width: 500px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.btn-next, .btn-close {
+  background: #007bff;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-top: 15px;
+}
+
+.btn-next:hover, .btn-close:hover {
+  background: #0056b3;
+}
+```
+
+---
+
+## �� Test Qilish
+
+### 1. Unit Test
+```javascript
+describe('MultilevelExamManager', () => {
+  let examManager;
+  
+  beforeEach(() => {
+    examManager = new MultilevelExamManager('test-user-id');
+  });
+  
+  test('should complete section successfully', async () => {
+    const mockResult = {
+      section_completed: true,
+      section_score: 65,
+      message: 'Listening section tugatildi...'
+    };
+    
+    // Mock fetch
+    global.fetch = jest.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve(mockResult)
+      })
+    );
+    
+    const result = await examManager.completeSection('listening', []);
+    expect(result).toBe(true);
+  });
+  
+  test('should show overall result when all sections completed', async () => {
+    const mockOverallResult = {
+      success: true,
+      overall_result: {
+        total_score: 245,
+        level: 'B2'
+      }
+    };
+    
+    global.fetch = jest.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve(mockOverallResult)
+      })
+    );
+    
+    await examManager.showOverallResult();
+    // Assert that overall result is displayed
+  });
+});
+```
+
+### 2. Integration Test
+```javascript
+describe('Multilevel Exam Flow', () => {
+  test('should complete full exam flow', async () => {
+    const examManager = new MultilevelExamManager('test-id');
+    
+    // Start exam
+    await examManager.startExam();
+    
+    // Complete each section
+    for (const section of ['listening', 'reading', 'writing', 'speaking']) {
+      const completed = await examManager.completeSection(section, []);
+      expect(completed).toBe(true);
+    }
+    
+    // Check overall result
+    const overallResult = await examManager.getOverallResult();
+    expect(overallResult.success).toBe(true);
+    expect(overallResult.overall_result.is_complete).toBe(true);
+  });
+});
+```
+
+---
+
+## 🚀 Deployment Maslahatlari
+
+### 1. Error Handling
+- Barcha API so'rovlarini try-catch bilan o'rash
+- Network xatoliklarini handle qilish
+- User-friendly xatolik xabarlarini ko'rsatish
+
+### 2. Loading States
+- Har bir API so'rovda loading spinner ko'rsatish
+- Section o'tishda progress bar ko'rsatish
+
+### 3. Offline Support
+- LocalStorage'da section natijalarini saqlash
+- Network qayta ulanganda sync qilish
+
+### 4. Performance
+- Lazy loading section'larni
+- Image optimization writing test uchun
+- Audio compression speaking test uchun
+
+---
+
+## 📱 Mobile Responsiveness
+
+### 1. Touch Support
+- Mobile uchun touch-friendly UI
+- Swipe gestures section o'tish uchun
+
+### 2. Screen Sizes
+- Tablet va mobile uchun responsive design
+- Progress bar va natijalarni kichik ekranlarda ko'rsatish
+
+---
+
+Bu dokumentatsiya orqali frontendchi multilevel va TYS imtihonlarini to'liq integratsiya qila oladi! 🎉

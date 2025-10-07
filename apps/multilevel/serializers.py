@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Exam, Section, Test, Question, Option, UserTest, TestResult, UserAnswer
+from .models import Exam, Section, Test, Question, Option, UserTest, TestResult, UserAnswer, TestImage, QuestionImage
 from apps.main.serializers import LanguageSerializer
 from django.db import transaction
 from django.shortcuts import get_object_or_404
@@ -29,10 +29,16 @@ class ExamListSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Exam
-        fields = ['id', 'title', 'description', 'level', 'language', 'price']
+        fields = ['id', 'title', 'description', 'level', 'language', 'price', 'order_id']
+
+class TestImageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TestImage
+        fields = ['id', 'image', 'order']
 
 class TestSerializer(serializers.ModelSerializer):
     options = serializers.SerializerMethodField()
+    images = TestImageSerializer(many=True, read_only=True)
 
     class Meta:
         model = Test
@@ -41,7 +47,14 @@ class TestSerializer(serializers.ModelSerializer):
     def get_options(self, obj):
         return obj.get_options()
 
+class QuestionImageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = QuestionImage
+        fields = ['id', 'image', 'order']
+
 class QuestionSerializer(serializers.ModelSerializer):
+    images = QuestionImageSerializer(many=True, read_only=True)
+    
     class Meta:
         model = Question
         fields = '__all__'
@@ -99,6 +112,7 @@ class MultilevelQuestionSerializer(serializers.ModelSerializer):
     options = serializers.SerializerMethodField()
     user_answer = serializers.SerializerMethodField()
     picture = serializers.SerializerMethodField()
+    images = serializers.SerializerMethodField()
 
     class Meta:
         model = Question
@@ -106,6 +120,7 @@ class MultilevelQuestionSerializer(serializers.ModelSerializer):
             "id",
             "text",
             "picture",
+            "images",
             "has_options",
             "user_answer",
             "options",
@@ -126,6 +141,18 @@ class MultilevelQuestionSerializer(serializers.ModelSerializer):
             return request.build_absolute_uri(obj.picture.url) if request else obj.picture.url
         return None
 
+    def get_images(self, obj):
+        request = self.context.get("request")
+        images = obj.get_all_images()
+        image_data = []
+        for img in images:
+            image_data.append({
+                'id': img.id,
+                'image': request.build_absolute_uri(img.image.url) if request else img.image.url,
+                'order': img.order
+            })
+        return image_data
+
     def get_user_answer(self, obj):
         test_result = self.context.get('test_result')
         if not test_result:
@@ -140,12 +167,15 @@ class MultilevelTestSerializer(serializers.ModelSerializer):
     questions = serializers.SerializerMethodField()
     options = serializers.SerializerMethodField()
     picture = serializers.SerializerMethodField()
+    images = serializers.SerializerMethodField()
     audio = serializers.SerializerMethodField()
     order_id = serializers.IntegerField(source='order', read_only=True)
+    response_time = serializers.SerializerMethodField()
+    upload_time = serializers.SerializerMethodField()
 
     class Meta:
         model = Test
-        fields = ["id", "order_id", "title", "description", "picture", "audio", "options", "sample", "text_title", "text", "constraints", "questions"]
+        fields = ["id", "order_id", "title", "description", "picture", "images", "audio", "options", "sample", "text_title", "text", "constraints", "questions", "response_time", "upload_time"]
 
     def get_questions(self, obj):
         return MultilevelQuestionSerializer(
@@ -160,6 +190,18 @@ class MultilevelTestSerializer(serializers.ModelSerializer):
             return request.build_absolute_uri(obj.picture.url) if request else obj.picture.url
         return None
 
+    def get_images(self, obj):
+        request = self.context.get("request")
+        images = obj.get_all_images()
+        image_data = []
+        for img in images:
+            image_data.append({
+                'id': img.id,
+                'image': request.build_absolute_uri(img.image.url) if request else img.image.url,
+                'order': img.order
+            })
+        return image_data
+
     def get_audio(self, obj):
         request = self.context.get("request")
         if obj.audio:
@@ -168,6 +210,18 @@ class MultilevelTestSerializer(serializers.ModelSerializer):
 
     def get_options(self, obj):
         return obj.get_options()
+
+    def get_response_time(self, obj):
+        # Writing test uchun response_time maydoni
+        if hasattr(obj, 'response_time') and obj.response_time:
+            return obj.response_time
+        return None
+
+    def get_upload_time(self, obj):
+        # Writing test uchun upload_time maydoni
+        if hasattr(obj, 'upload_time') and obj.upload_time:
+            return obj.upload_time
+        return None
 
 class MultilevelSectionSerializer(serializers.ModelSerializer):
     tests = serializers.SerializerMethodField()

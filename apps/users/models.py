@@ -84,6 +84,7 @@ class User(AbstractUser):
     gender = models.CharField(max_length=10, choices=GENDER_CHOICES, null=True, blank=True)
     region = models.ForeignKey(Region, on_delete=models.CASCADE, blank=True, null=True)
     language = models.ForeignKey(Language, on_delete=models.CASCADE, blank=True, null=True)
+    balance = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     created_at = models.DateTimeField(auto_now_add=True)
 
     objects = CustomUserManager()  # Set the custom manager

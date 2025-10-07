@@ -64,7 +64,7 @@ class MultilevelTysExamResultView(APIView):
                 'error': 'user_test_id to\'g\'ri son bo\'lishi kerak'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # UserTest ni topish va ruxsatni tekshirish
+        # UserTest ni topish va ruxsatni tekshirish (faqat UserTest ID qabul qilinadi)
         try:
             user_test = UserTest.objects.get(id=user_test_id, user=request.user)
         except UserTest.DoesNotExist:

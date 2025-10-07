@@ -80,31 +80,50 @@ class ListeningTestCheckApiView(APIView):
     def get_active_test_result(self, user, test_result_id, question):
         if test_result_id:
             try:
+                # Avval started statusdagi testni qidiramiz
                 test_result = TestResult.objects.get(id=test_result_id, user_test__user=user, status='started')
             except TestResult.DoesNotExist:
-                return self.handle_error("Bu ID ga mos faol TestResult mavjud emas", status.HTTP_403_FORBIDDEN)
+                try:
+                    # Agar started topilmasa, completed statusdagi testni qidiramiz
+                    # Bu vaqt tugaganda avtomatik completed bo'lgan testlar uchun
+                    test_result = TestResult.objects.get(id=test_result_id, user_test__user=user, status='completed')
+                    # Vaqt tugaganda completed bo'lgan test uchun maxsus xabar
+                    return test_result
+                except TestResult.DoesNotExist:
+                    return self.handle_error("Bu ID ga mos TestResult mavjud emas", status.HTTP_403_FORBIDDEN)
         else:
+            # test_result_id yo'q bo'lsa, avval started, keyin completed testlarni qidiramiz
             test_result = TestResult.objects.filter(
                 user_test__user=user,
                 section=question.test.section,
                 status='started'
             ).last()
+            
             if not test_result:
-                return self.handle_error("Ushbu bo'lim uchun faol test topilmadi!", status.HTTP_400_BAD_REQUEST)
+                # Started topilmasa, completed testni qidiramiz
+                test_result = TestResult.objects.filter(
+                    user_test__user=user,
+                    section=question.test.section,
+                    status='completed'
+                ).last()
+                
+                if not test_result:
+                    return self.handle_error("Ushbu bo'lim uchun test topilmadi!", status.HTTP_400_BAD_REQUEST)
 
-        # Test vaqti tugagan bo'lsa yoki test tekshirilgan bo'lsa, uni completed ga o'tkazish
-        if test_result.end_time and test_result.end_time < timezone.now():
-            test_result.status = 'completed'
-            test_result.save()
-            test_result.user_test.status = 'completed'
-            test_result.user_test.save()
-            return self.handle_error("Test vaqti tugagan, yangi test so'rang", status.HTTP_400_BAD_REQUEST)
+        # Test vaqti tugagan bo'lsa, uni completed ga o'tkazish
+        from .utils import check_test_time_limit
+        if check_test_time_limit(test_result):
+            # Vaqt tugaganda completed bo'lgan test uchun maxsus xabar
+            if test_result.status == 'completed':
+                return test_result
+            return self.handle_error("Test vaqti tugagan, javob qabul qilinmadi", status.HTTP_400_BAD_REQUEST)
         
         # Test tekshirilgan bo'lsa (vaqt tugamasdan), uni completed ga o'tkazish
         # Bu yerda test_result ni completed ga o'tkazamiz, lekin hali end_time ni o'zgartirmaymiz
         # chunki finalize_test metodida end_time ni o'zgartiramiz
-        test_result.status = 'completed'
-        test_result.save()
+        if test_result.status == 'started':
+            test_result.status = 'completed'
+            test_result.save()
 
         return test_result
 
@@ -194,10 +213,12 @@ class ListeningTestCheckApiView(APIView):
             test_result.end_time = timezone.now()  # End time ni o'zgartirish
             test_result.save()
 
-            # Multilevel imtihonlar uchun maxsus logika
+            # Multilevel va TYS imtihonlar uchun maxsus logika
             user_test = test_result.user_test
-            if user_test.exam.level == 'multilevel':
-                # Multilevel: barcha section'lar tugatilganda UserTest ni yakunlash
+            is_multilevel_exam = user_test.exam.level in ['multilevel', 'tys']
+            
+            if is_multilevel_exam:
+                # Multilevel/TYS: barcha section'lar tugatilganda UserTest ni yakunlash
                 all_test_results = TestResult.objects.filter(user_test=user_test, status='completed')
                 total_sections = Section.objects.filter(exam=user_test.exam).count()
                 completed_sections = all_test_results.count()
@@ -212,20 +233,28 @@ class ListeningTestCheckApiView(APIView):
                     # Hali section'lar tugatilmagan
                     user_test.status = 'started'
                     user_test.save()
+                
+                # Multilevel/TYS uchun faqat section completion ko'rsatish
+                return {
+                    "answers": response_data,
+                    "section_completed": True,
+                    "section_score": score,
+                    "message": "Listening section tugatildi. Barcha sectionlar tugagandan keyin umumiy natija ko'rsatiladi."
+                }
             else:
                 # Boshqa level'lar: har bir section uchun alohida
                 user_test.score = score
                 user_test.status = 'completed'  # Har bir section tugatilganda UserTest ham tugaydi
                 user_test.save()
 
-            return {
-                "answers": response_data,
-                "test_completed": True,
-                "score": score,
-                "correct_answers": correct_count,
-                "total_questions": total_questions,
-                "level": level
-            }
+                return {
+                    "answers": response_data,
+                    "test_completed": True,
+                    "score": score,
+                    "correct_answers": correct_count,
+                    "total_questions": total_questions,
+                    "level": level
+                }
 
         # Agar test hali completed emas bo'lsa, eski logika
         if total_questions == answered_questions:
@@ -249,10 +278,12 @@ class ListeningTestCheckApiView(APIView):
             test_result.end_time = timezone.now()
             test_result.save()
 
-            # Multilevel imtihonlar uchun maxsus logika
+            # Multilevel va TYS imtihonlar uchun maxsus logika
             user_test = test_result.user_test
-            if user_test.exam.level == 'multilevel':
-                # Multilevel: barcha section'lar tugatilganda UserTest ni yakunlash
+            is_multilevel_exam = user_test.exam.level in ['multilevel', 'tys']
+            
+            if is_multilevel_exam:
+                # Multilevel/TYS: barcha section'lar tugatilganda UserTest ni yakunlash
                 all_test_results = TestResult.objects.filter(user_test=user_test, status='completed')
                 total_sections = Section.objects.filter(exam=user_test.exam).count()
                 completed_sections = all_test_results.count()
@@ -267,18 +298,26 @@ class ListeningTestCheckApiView(APIView):
                     # Hali section'lar tugatilmagan
                     user_test.status = 'started'
                     user_test.save()
+                
+                # Multilevel/TYS uchun faqat section completion ko'rsatish
+                return {
+                    "answers": response_data,
+                    "section_completed": True,
+                    "section_score": score,
+                    "message": "Listening section tugatildi. Barcha sectionlar tugagandan keyin umumiy natija ko'rsatiladi."
+                }
             else:
                 # Boshqa level'lar: har bir section uchun alohida
                 user_test.score = score
                 user_test.status = 'completed'  # Har bir section tugatilganda UserTest ham tugaydi
                 user_test.save()
 
-            return {
-                "answers": response_data,
-                "test_completed": True,
-                "score": score,
-                "correct_answers": correct_count,
-                "total_questions": total_questions,
-                "level": level
-            }
+                return {
+                    "answers": response_data,
+                    "test_completed": True,
+                    "score": score,
+                    "correct_answers": correct_count,
+                    "total_questions": total_questions,
+                    "level": level
+                }
         return {"answers": response_data}

@@ -7,31 +7,93 @@ from rest_framework.response import Response
 from rest_framework import status
 import re  # re modulini import qilish
 import json
+from .tasks import schedule_test_completion
 
 logger = logging.getLogger(__name__)
+
+def check_test_time_limit(test_result):
+    """
+    Test vaqti tugaganligini tekshiradi va kerak bo'lsa avtomatik yakunlaydi.
+    Args:
+        test_result: TestResult obyekti
+    Returns:
+        bool: True agar vaqt tugagan bo'lsa, False aks holda
+    """
+    if test_result.end_time and test_result.end_time < timezone.now():
+        # Vaqt tugagan, testni avtomatik yakunlash
+        test_result.status = 'completed'
+        test_result.save()
+        
+        # UserTest ni ham tekshirish
+        user_test = test_result.user_test
+        active_tests = TestResult.objects.filter(user_test=user_test, status='started')
+        
+        if not active_tests.exists():
+            user_test.status = 'completed'
+            user_test.save()
+        
+        logger.info(f"Test {test_result.id} vaqt chegarasi tugagani uchun avtomatik yakunlandi")
+        return True
+    
+    return False
+
+def schedule_test_time_limit(test_result):
+    """
+    Test uchun vaqt chegarasi task'ini rejalashtiradi.
+    Args:
+        test_result: TestResult obyekti
+    """
+    if test_result.section.duration:
+        try:
+            # Vaqt chegarasi task'ini rejalashtirish
+            from .tasks import schedule_test_completion
+            schedule_test_completion.delay(test_result.id, test_result.section.duration)
+            logger.info(f"Test {test_result.id} uchun {test_result.section.duration} daqiqa vaqt chegarasi rejalashtirildi")
+        except Exception as e:
+            # Celery yoki Redis muammosi bo'lsa, xatolikni log qilish lekin davom etish
+            logger.warning(f"Test {test_result.id} uchun vaqt chegarasi rejalashtirilmadi: {str(e)}")
+            # Muammo bo'lsa ham test davom etishi kerak
+            pass
 
 def get_or_create_test_result(user, test_result_id, question):
     """TestResult ni olish yoki yaratish"""
     if test_result_id:
         try:
+            # Avval started statusdagi testni qidiramiz
             test_result = TestResult.objects.get(id=test_result_id, user_test__user=user, status='started')
         except TestResult.DoesNotExist:
-            return Response({"error": "Bu ID ga mos faol TestResult mavjud emas"}, status=status.HTTP_403_FORBIDDEN)
+            try:
+                # Agar started topilmasa, completed statusdagi testni qidiramiz
+                # Bu vaqt tugaganda avtomatik completed bo'lgan testlar uchun
+                test_result = TestResult.objects.get(id=test_result_id, user_test__user=user, status='completed')
+                # Vaqt tugaganda completed bo'lgan test uchun maxsus xabar
+                return test_result
+            except TestResult.DoesNotExist:
+                return Response({"error": "Bu ID ga mos TestResult mavjud emas"}, status=status.HTTP_403_FORBIDDEN)
     else:
+        # test_result_id yo'q bo'lsa, avval started, keyin completed testlarni qidiramiz
         test_result = TestResult.objects.filter(
             user_test__user=user,
             section=question.test.section,
             status='started'
         ).last()
+        
         if not test_result:
-            return Response({"error": "Ushbu bo'lim uchun faol test topilmadi!"}, status=status.HTTP_400_BAD_REQUEST)
+            # Started topilmasa, completed testni qidiramiz
+            test_result = TestResult.objects.filter(
+                user_test__user=user,
+                section=question.test.section,
+                status='completed'
+            ).last()
+            
+            if not test_result:
+                return Response({"error": "Ushbu bo'lim uchun test topilmadi!"}, status=status.HTTP_400_BAD_REQUEST)
 
-    if test_result.end_time and test_result.end_time < timezone.now():
-        test_result.status = 'completed'
-        test_result.save()
-        user_test = test_result.user_test
-        user_test.status = 'completed' if not TestResult.objects.filter(user_test=user_test, status='started').exists() else 'started'
-        user_test.save()
+    # Vaqt chegarasi tekshirish
+    if check_test_time_limit(test_result):
+        # Vaqt tugaganda completed bo'lgan test uchun maxsus xabar
+        if test_result.status == 'completed':
+            return test_result
         return Response({"error": "Test vaqti tugagan, yangi test so'rang"}, status=status.HTTP_400_BAD_REQUEST)
 
     return test_result
@@ -55,6 +117,16 @@ def process_test_response(
     """
     if logger is None:
         logger = logging.getLogger(__name__)
+
+    # Vaqt chegarasi tekshirish
+    if check_test_time_limit(test_result):
+        return {
+            "score": 0,
+            "result": "Test vaqti tugagan, javob qabul qilinmadi",
+            "test_completed": True,
+            "user_answer": processed_answer or "",
+            "question_text": question.text,
+        }
 
     # Handle case where processed_answer is None
     if processed_answer is None:
@@ -165,7 +237,7 @@ def process_test_response(
         logger.error(f"OpenAI API limiti oshib ketdi: {str(e)}")
         return {
             "score": 0,
-            "result": "OpenAI API limiti oshib ketdi, iltimos keyinroq urinib ko‘ring",
+            "result": "OpenAI API limiti oshib ketdi, iltimos keyinroq urinib ko'ring",
             "test_completed": False,
             "user_answer": processed_answer,
             "question_text": question.text,
@@ -174,7 +246,7 @@ def process_test_response(
         logger.error(f"OpenAI javobini qayta ishlashda xato: {str(e)}")
         return {
             "score": 0,
-            "result": "Tizimda xatolik yuz berdi, iltimos keyinroq urinib ko‘ring",
+            "result": "Tizimda xatolik yuz berdi, iltimos keyinroq urinib ko'ring",
             "test_completed": False,
             "user_answer": processed_answer,
             "question_text": question.text,

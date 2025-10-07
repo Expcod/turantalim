@@ -1,0 +1,404 @@
+Rahmat! Endi writing test check qilish uchun frontendchi uchun to'liq qo'llanma yozaman:
+
+# Writing Test Check API - Frontendchi Qo'llanmasi
+
+## �� Mundarija
+
+1. [API Endpoint](#api-endpoint)
+2. [Autentifikatsiya](#autentifikatsiya)
+3. [Request Format](#request-format)
+4. [Response Format](#response-format)
+5. [Frontend Integratsiya](#frontend-integratsiya)
+6. [Xatoliklar](#xatoliklar)
+7. [Test Qilish](#test-qilish)
+
+---
+
+## �� API Endpoint
+
+```
+POST https://api.turantalim.uz/multilevel/testcheck/writing/
+```
+
+---
+
+## �� Autentifikatsiya
+
+**Header:**
+```javascript
+Authorization: Bearer YOUR_JWT_TOKEN
+```
+
+**JWT Token olish:**
+```javascript
+// Login API dan olingan token
+const token = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...";
+```
+
+---
+
+## 📤 Request Format
+
+### **Content-Type:**
+```
+multipart/form-data
+```
+
+### **Body Structure:**
+
+#### **1. Test Result ID (ixtiyoriy):**
+```
+Key: test_result_id
+Value: 284
+Type: Text
+```
+
+#### **2. Har bir savol uchun:**
+```
+Key: answers[0][question]
+Value: 53
+Type: Text
+
+Key: answers[0][writing_images][1][image]
+Value: [rasm fayli]
+Type: File
+
+Key: answers[0][writing_images][1][order]
+Value: 1
+Type: Text
+
+Key: answers[0][writing_images][2][image]
+Value: [rasm fayli]
+Type: File
+
+Key: answers[0][writing_images][2][order]
+Value: 2
+Type: Text
+```
+
+### **3. Ko'p savolli test uchun:**
+```
+// Birinchi savol
+answers[0][question]: 53
+answers[0][writing_images][1][image]: [rasm1.jpg]
+answers[0][writing_images][1][order]: 1
+
+// Ikkinchi savol
+answers[1][question]: 54
+answers[1][writing_images][1][image]: [rasm2.jpg]
+answers[1][writing_images][1][order]: 1
+```
+
+---
+
+## 📥 Response Format
+
+### **Muvaffaqiyatli Response (200):**
+```json
+{
+  "answers": [
+    {
+      "message": "Savol 53 uchun writing test (2 ta rasm) muvaffaqiyatli tekshirildi",
+      "result": "OpenAI baholash natijasi",
+      "score": 65,
+      "test_completed": false,
+      "user_answer": "OCR'dan olingan matn",
+      "question_text": "Savol matni",
+      "images_count": 2,
+      "word_count": 150,
+      "question_part": 1,
+      "max_score": 75,
+      "min_required": 70,
+      "target_words": 150
+    }
+  ],
+  "test_completed": true,
+  "score": 65
+}
+```
+
+### **Xatolik Response (400):**
+```json
+{
+  "error": "Test vaqti tugagan, javob qabul qilinmadi"
+}
+```
+
+---
+
+## �� Frontend Integratsiya
+
+### **1. FormData yaratish:**
+```javascript
+const submitWritingTest = async (testData) => {
+  const formData = new FormData();
+  
+  // Test result ID
+  formData.append('test_result_id', testData.testResultId);
+  
+  // Har bir savol uchun
+  testData.answers.forEach((answer, answerIndex) => {
+    // Savol ID
+    formData.append(`answers[${answerIndex}][question]`, answer.questionId);
+    
+    // Rasmlar
+    answer.images.forEach((image, imageIndex) => {
+      formData.append(
+        `answers[${answerIndex}][writing_images][${imageIndex + 1}][image]`, 
+        image.file
+      );
+      formData.append(
+        `answers[${answerIndex}][writing_images][${imageIndex + 1}][order]`, 
+        imageIndex + 1
+      );
+    });
+  });
+  
+  return formData;
+};
+```
+
+### **2. API so'rov yuborish:**
+```javascript
+const submitWritingTest = async (testData) => {
+  try {
+    const formData = createFormData(testData);
+    
+    const response = await fetch('/api/multilevel/testcheck/writing/', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        // Content-Type ni qo'ymang, FormData avtomatik o'rnatadi
+      },
+      body: formData
+    });
+    
+    if (response.ok) {
+      const result = await response.json();
+      console.log('Writing test natijasi:', result);
+      return result;
+    } else {
+      const error = await response.json();
+      throw new Error(error.error || 'Xatolik yuz berdi');
+    }
+  } catch (error) {
+    console.error('Writing test yuborishda xato:', error);
+    throw error;
+  }
+};
+```
+
+### **3. Rasm yuklash komponenti:**
+```javascript
+const ImageUploadComponent = ({ onImagesChange }) => {
+  const [images, setImages] = useState([]);
+  
+  const handleImageUpload = (files) => {
+    const newImages = Array.from(files).map((file, index) => ({
+      file,
+      order: index + 1,
+      preview: URL.createObjectURL(file)
+    }));
+    
+    setImages(newImages);
+    onImagesChange(newImages);
+  };
+  
+  return (
+    <div className="image-upload">
+      <input
+        type="file"
+        multiple
+        accept="image/*"
+        onChange={(e) => handleImageUpload(e.target.files)}
+      />
+      
+      {images.map((image, index) => (
+        <div key={index} className="image-preview">
+          <img src={image.preview} alt={`Rasm ${image.order}`} />
+          <span>Order: {image.order}</span>
+        </div>
+      ))}
+    </div>
+  );
+};
+```
+
+---
+
+## ⚠️ Xatoliklar
+
+### **Keng Tarqalgan Xatoliklar:**
+
+#### **1. 400 Bad Request:**
+```json
+{
+  "answers": ["Kamida bitta javob kiritilishi shart!"]
+}
+```
+**Sababi:** `answers` maydoni bo'sh yoki noto'g'ri format
+
+#### **2. 400 Bad Request:**
+```json
+{
+  "error": "Test vaqti tugagan, javob qabul qilinmadi"
+}
+```
+**Sababi:** Test vaqti tugagan
+
+#### **3. 403 Forbidden:**
+```json
+{
+  "error": "TestResult topilmadi yoki faol emas!"
+}
+```
+**Sababi:** `test_result_id` noto'g'ri yoki test faol emas
+
+### **Xatoliklarni Hal Qilish:**
+```javascript
+const handleError = (error) => {
+  if (error.includes('vaqti tugagan')) {
+    alert('Test vaqti tugagan, yangi test so\'rang');
+  } else if (error.includes('TestResult topilmadi')) {
+    alert('Test natijasi topilmadi, testni qayta boshlang');
+  } else {
+    alert(`Xatolik: ${error}`);
+  }
+};
+```
+
+---
+
+## 🧪 Test Qilish
+
+### **1. Postman'da Test:**
+```
+POST https://api.turantalim.uz/multilevel/testcheck/writing/
+Headers: Authorization: Bearer YOUR_TOKEN
+Body: form-data
+
+test_result_id: 284
+answers[0][question]: 53
+answers[0][writing_images][1][image]: [rasm1.jpg]
+answers[0][writing_images][1][order]: 1
+answers[0][writing_images][2][image]: [rasm2.jpg]
+answers[0][writing_images][2][order]: 2
+```
+
+### **2. Frontend'da Test:**
+```javascript
+// Test ma'lumotlari
+const testData = {
+  testResultId: 284,
+  answers: [
+    {
+      questionId: 53,
+      images: [
+        { file: file1, order: 1 },
+        { file: file2, order: 2 }
+      ]
+    }
+  ]
+};
+
+// Test yuborish
+const result = await submitWritingTest(testData);
+console.log('Test natijasi:', result);
+```
+
+---
+
+## �� Muhim Eslatmalar
+
+### **1. Rasm Formatlari:**
+- **Qo'llab-quvvatlanadigan:** PNG, JPG, JPEG
+- **Maksimal hajm:** 5MB
+- **Maksimal soni:** 3 ta har savol uchun
+
+### **2. Order Qoidalari:**
+- Order 1 dan boshlanishi kerak
+- Order'lar ketma-ket bo'lishi kerak (1, 2, 3)
+- Order takrorlanmasligi kerak
+
+### **3. Vaqt Boshqarish:**
+- Writing test uchun maxsus vaqt boshqarish mavjud
+- `response_time` va `upload_time` maydonlari admin panelda o'rnatiladi
+
+### **4. Ball Tizimi:**
+- Har bir savol: 0-75 ball
+- Umumiy writing test: maksimum 75 ball
+- Ball OpenAI orqali avtomatik hisoblanadi
+
+---
+
+## 🔄 To'liq Frontend Namuna
+
+```javascript
+import React, { useState } from 'react';
+
+const WritingTestForm = () => {
+  const [testData, setTestData] = useState({
+    testResultId: '',
+    answers: []
+  });
+  
+  const [loading, setLoading] = useState(false);
+  
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    
+    try {
+      const result = await submitWritingTest(testData);
+      alert(`Writing test muvaffaqiyatli yuborildi! Ball: ${result.score}`);
+    } catch (error) {
+      handleError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  return (
+    <form onSubmit={handleSubmit}>
+      <input
+        type="number"
+        placeholder="Test Result ID"
+        value={testData.testResultId}
+        onChange={(e) => setTestData({...testData, testResultId: e.target.value})}
+      />
+      
+      {/* Savollar va rasmlar */}
+      {testData.answers.map((answer, index) => (
+        <div key={index}>
+          <input
+            type="number"
+            placeholder="Savol ID"
+            value={answer.questionId}
+            onChange={(e) => {
+              const newAnswers = [...testData.answers];
+              newAnswers[index].questionId = e.target.value;
+              setTestData({...testData, answers: newAnswers});
+            }}
+          />
+          
+          <ImageUploadComponent
+            onImagesChange={(images) => {
+              const newAnswers = [...testData.answers];
+              newAnswers[index].images = images;
+              setTestData({...testData, answers: newAnswers});
+            }}
+          />
+        </div>
+      ))}
+      
+      <button type="submit" disabled={loading}>
+        {loading ? 'Yuborilmoqda...' : 'Writing Test Yuborish'}
+      </button>
+    </form>
+  );
+};
+
+export default WritingTestForm;
+```
+
+Bu qo'llanma orqali frontendchi writing test check API'sini to'liq integratsiya qilishi mumkin! 🚀

@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Image Placeholders</title>
+    <script>
+        // This script generates placeholder images for testing purposes
+        // Run this file in a browser and it will create canvas elements that you can right-click and save
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            const samples = [
+                { id: 'sample-writing-1-1', text: 'Writing Sample 1 - Page 1' },
+                { id: 'sample-writing-1-2', text: 'Writing Sample 1 - Page 2' },
+                { id: 'sample-writing-2-1', text: 'Writing Sample 2 - Page 1' },
+                { id: 'sample-writing-2-2', text: 'Writing Sample 2 - Page 2' },
+                { id: 'sample-writing-2-3', text: 'Writing Sample 2 - Page 3' }
+            ];
+            
+            samples.forEach(sample => {
+                createPlaceholder(sample.id, sample.text);
+            });
+        });
+        
+        function createPlaceholder(id, text) {
+            const container = document.createElement('div');
+            container.style.margin = '20px';
+            document.body.appendChild(container);
+            
+            const canvas = document.createElement('canvas');
+            canvas.id = id;
+            canvas.width = 800;
+            canvas.height = 1000;
+            canvas.style.border = '1px solid #ddd';
+            container.appendChild(canvas);
+            
+            const label = document.createElement('p');
+            label.textContent = `Right-click and save as "${id}.jpg"`;
+            container.appendChild(label);
+            
+            const ctx = canvas.getContext('2d');
+            
+            // Fill background
+            ctx.fillStyle = '#f9f9f9';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw lined paper effect
+            ctx.strokeStyle = '#e0e0e0';
+            ctx.lineWidth = 1;
+            
+            for (let y = 50; y < canvas.height; y += 30) {
+                ctx.beginPath();
+                ctx.moveTo(50, y);
+                ctx.lineTo(canvas.width - 50, y);
+                ctx.stroke();
+            }
+            
+            // Draw vertical margin
+            ctx.strokeStyle = '#e74c3c';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(100, 50);
+            ctx.lineTo(100, canvas.height - 50);
+            ctx.stroke();
+            
+            // Add sample handwritten text
+            ctx.font = '22px "Comic Sans MS", cursive';
+            ctx.fillStyle = '#333';
+            
+            const title = `${text}`;
+            ctx.fillText(title, 150, 100);
+            
+            // Add some sample handwritten content
+            const lines = [
+                "Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
+                "Maecenas et lacus at risus volutpat commodo vel sed lectus.",
+                "Donec pharetra eros non eros sagittis, vel tincidunt velit bibendum.",
+                "Cras feugiat turpis at ex rutrum, a faucibus enim ultrices.",
+                "Vivamus vel tellus eget urna consectetur condimentum.",
+                "Suspendisse potenti. Ut non erat vitae eros porttitor cursus.",
+                "Integer bibendum lectus in tellus vulputate, et maximus dui pharetra.",
+                "Cras id nunc ultrices, rutrum purus ac, pharetra arcu.",
+                "Nullam eget magna id orci ultrices mattis quis id lacus.",
+                "Praesent semper nibh id odio congue facilisis."
+            ];
+            
+            let y = 150;
+            lines.forEach(line => {
+                ctx.fillText(line, 150, y);
+                y += 50;
+            });
+            
+            // Add image ID
+            ctx.font = '16px Arial';
+            ctx.fillStyle = '#999';
+            ctx.fillText(`image_id: ${id.split('-').pop()}`, 150, canvas.height - 50);
+        }
+    </script>
+</head>
+<body>
+    <h1>Image Placeholders Generator</h1>
+    <p>Right-click on each image and save them with their displayed filenames.</p>
+</body>
+</html>

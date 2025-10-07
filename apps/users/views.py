@@ -7,6 +7,7 @@ from rest_framework.views import APIView
 from drf_yasg.utils import swagger_auto_schema
 from django.utils import timezone
 from datetime import timedelta
+import json
 
 from .models import User, VerificationCode
 from .serializers import *
@@ -169,11 +170,27 @@ class PasswordResetRequestView(APIView):
         }
     )
     def post(self, request):
-        serializer = PasswordResetRequestSerializer(data=request.data)
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        # Handle request data properly
+        if hasattr(request, 'data'):
+            data = request.data
+        else:
+            # For non-DRF requests, parse JSON from body
+            try:
+                data = json.loads(request.body.decode('utf-8'))
+            except Exception as e:
+                logger.error(f"Error parsing request body: {e}")
+                data = request.POST
+        
+        serializer = PasswordResetRequestSerializer(data=data)
         if not serializer.is_valid():
+            logger.error(f"Serializer errors: {serializer.errors}")
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         identifier = serializer.validated_data['identifier']
+        
         user = None
         if identifier.startswith('+998'):
             user = User.objects.filter(phone=identifier).first()
@@ -181,6 +198,7 @@ class PasswordResetRequestView(APIView):
             user = User.objects.filter(email=identifier).first()
             
         if not user:
+            logger.warning(f"Password reset attempt for non-existent user: {identifier}")
             return Response({"error": "Foydalanuvchi topilmadi!"}, status=status.HTTP_404_NOT_FOUND)
 
         # Tasdiqlash kodi generatsiya qilish
@@ -202,6 +220,7 @@ class PasswordResetRequestView(APIView):
             # Direct SMS sending for testing
             sms_sent = send_sms_via_eskiz(identifier, code)
             if not sms_sent:
+                logger.error(f"SMS sending failed for user: {identifier}")
                 return Response({"error": "SMS yuborishda xatolik yuz berdi!"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             return Response({"message": "Tasdiqlash kodi SMS orqali yuborildi."}, status=status.HTTP_200_OK)
         else:

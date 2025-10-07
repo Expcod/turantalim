@@ -17,15 +17,15 @@ OPENAI_API_KEY = base.OPENAI_API_KEY
 client = OpenAI(api_key=OPENAI_API_KEY)
 logger = logging.getLogger(__name__)
 
-# Writing testni asinxron tekshirish
+# Writing testni asinxron tekshirish (ko'p rasmli)
 @shared_task
-def process_writing_test(test_result_id, question_id, image_path):
+def process_writing_test(test_result_id, question_id, image_paths_data):
     """
-    Writing test javobini OpenAI orqali asinxron tekshiradi.
+    Writing test javobini OpenAI orqali asinxron tekshiradi (ko'p rasmli).
     Args:
         test_result_id (int): TestResult ID
         question_id (int): Question ID
-        image_path (str): Saqlangan rasmning yo'li
+        image_paths_data (list): Rasmlar ma'lumotlari [{'path': 'path/to/image', 'order': 1}, ...]
     Returns:
         dict: Tekshiruv natijalari (message, result, score, user_answer, question_text)
     """
@@ -43,21 +43,44 @@ def process_writing_test(test_result_id, question_id, image_path):
             logger.error(f"TestResult {test_result_id} writing testiga mos emas")
             return {"error": "Bu test writing testiga mos emas"}
 
-        # Rasmni matnga aylantirish (OCR)
-        image_url = f"{settings.MEDIA_URL}writing_images/{os.path.basename(image_path)}"
-        ocr_response = client.chat.completions.create(
-            model="gpt-4-vision-preview",
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": "Bu rasmda yozilgan matnni o'qib bering."},
-                        {"type": "image_url", "image_url": {"url": image_url}},
+        # Barcha rasmlarni OCR qilish va birlashtirish
+        all_texts = []
+        
+        for image_data in image_paths_data:
+            image_path = image_data['path']
+            order = image_data['order']
+            
+            try:
+                # Rasmni matnga aylantirish (OCR)
+                image_url = f"{settings.MEDIA_URL}writing_images/{os.path.basename(image_path)}"
+                ocr_response = client.chat.completions.create(
+                    model="gpt-4-vision-preview",
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": f"Bu rasmda yozilgan matnni o'qib bering. Bu {order}-rasm."},
+                                {"type": "image_url", "image_url": {"url": image_url}},
+                            ],
+                        }
                     ],
-                }
-            ],
-        )
-        processed_answer = ocr_response.choices[0].message.content
+                )
+                processed_text = ocr_response.choices[0].message.content
+                
+                if processed_text:
+                    all_texts.append(f"[Rasm {order}]: {processed_text}")
+                else:
+                    all_texts.append(f"[Rasm {order}]: Matn aniqlanmadi")
+                    
+            except Exception as e:
+                logger.error(f"OCR xatolik rasm {order} uchun: {str(e)}")
+                all_texts.append(f"[Rasm {order}]: OCR xatolik")
+
+        # Barcha matnlarni birlashtirish
+        if all_texts:
+            processed_answer = "\n\n".join(all_texts)
+        else:
+            processed_answer = "Barcha rasmlarda matn aniqlanmadi"
 
         # Get exam level for scoring validation
         exam_level = test_result.user_test.exam.level
@@ -88,14 +111,14 @@ def process_writing_test(test_result_id, question_id, image_path):
         else:
             # Fallback to original scoring for other levels
             prompt = (
-                f"Foydalanuvchi til imtihoni uchun writing javobini yubordi: '{processed_answer}'. "
-                f"Savol: '{question.text}'. "
-                "Javobni grammatika, so'z boyligi, mazmun va tuzilishi bo'yicha tekshirib, "
-                "batafsil izoh bilan 0-100 oralig'ida baho bering. "
-                "Javobingizni quyidagi formatda bering: "
-                "Izoh: [batafsil izoh]\n"
-                "Baho: [0-100 oralig'ida son]"
-            )
+            f"Foydalanuvchi til imtihoni uchun writing javobini yubordi ({len(image_paths_data)} ta rasmdan): '{processed_answer}'. "
+            f"Savol: '{question.text}'. "
+            "Javobni grammatika, so'z boyligi, mazmun va tuzilishi bo'yicha tekshirib, "
+            "batafsil izoh bilan 0-100 oralig'ida baho bering. "
+            "Javobingizni quyidagi formatda bering: "
+            "Izoh: [batafsil izoh]\n"
+            "Baho: [0-100 oralig'ida son]"
+        )
 
         # ChatGPT bilan tekshirish
         gpt_response = client.chat.completions.create(
@@ -176,12 +199,13 @@ def process_writing_test(test_result_id, question_id, image_path):
 
         # Prepare response
         response_data = {
-            "message": "Writing test muvaffaqiyatli tekshirildi",
+            "message": f"Writing test ({len(image_paths_data)} ta rasm) muvaffaqiyatli tekshirildi",
             "result": result,
             "score": score,
             "test_completed": test_completed,
             "user_answer": processed_answer,
-            "question_text": question.text
+            "question_text": question.text,
+            "images_count": len(image_paths_data)
         }
 
         # Add additional info for multilevel tests
@@ -394,3 +418,123 @@ def cleanup_temp_file_task(file_path):
             logger.warning(f"Fayl topilmadi: {file_path}")
     except Exception as e:
         logger.error(f"Fayl o'chirishda xato: {str(e)}")
+
+# Vaqt chegarasi tugaganda testni avtomatik yakunlash
+@shared_task
+def auto_complete_test(test_result_id):
+    """
+    Vaqt chegarasi tugaganda testni avtomatik yakunlaydi.
+    Args:
+        test_result_id (int): TestResult ID
+    Returns:
+        dict: Yakunlash natijasi
+    """
+    try:
+        test_result = TestResult.objects.get(id=test_result_id, status='started')
+        
+        # Testni completed ga o'tkazish
+        test_result.status = 'completed'
+        test_result.end_time = timezone.now()
+        test_result.save()
+        
+        # UserTest ni ham tekshirish
+        user_test = test_result.user_test
+        active_tests = TestResult.objects.filter(user_test=user_test, status='started')
+        
+        if not active_tests.exists():
+            user_test.status = 'completed'
+            user_test.save()
+        
+        logger.info(f"Test {test_result_id} vaqt chegarasi tugagani uchun avtomatik yakunlandi")
+        
+        return {
+            "success": True,
+            "message": f"Test {test_result_id} avtomatik yakunlandi",
+            "test_result_id": test_result_id
+        }
+        
+    except TestResult.DoesNotExist:
+        logger.warning(f"TestResult {test_result_id} topilmadi")
+        return {
+            "success": False,
+            "message": f"TestResult {test_result_id} topilmadi"
+        }
+    except Exception as e:
+        logger.error(f"Test {test_result_id} yakunlashda xatolik: {str(e)}")
+        return {
+            "success": False,
+            "message": f"Xatolik: {str(e)}"
+        }
+
+# Muntazam tekshirish - vaqt chegarasi tugagan testlarni topish
+@shared_task
+def check_expired_tests():
+    """
+    Vaqt chegarasi tugagan testlarni muntazam tekshirib, ularni avtomatik yakunlaydi.
+    Bu task celery beat orqali muntazam ishga tushiriladi.
+    """
+    try:
+        # Vaqt chegarasi tugagan, lekin hali started holatda bo'lgan testlarni topish
+        expired_tests = TestResult.objects.filter(
+            status='started',
+            end_time__lt=timezone.now()
+        )
+        
+        completed_count = 0
+        for test_result in expired_tests:
+            try:
+                # Testni completed ga o'tkazish
+                test_result.status = 'completed'
+                test_result.save()
+                
+                # UserTest ni ham tekshirish
+                user_test = test_result.user_test
+                active_tests = TestResult.objects.filter(user_test=user_test, status='started')
+                
+                if not active_tests.exists():
+                    user_test.status = 'completed'
+                    user_test.save()
+                
+                completed_count += 1
+                logger.info(f"Test {test_result.id} vaqt chegarasi tugagani uchun avtomatik yakunlandi")
+                
+            except Exception as e:
+                logger.error(f"Test {test_result.id} yakunlashda xatolik: {str(e)}")
+        
+        if completed_count > 0:
+            logger.info(f"{completed_count} ta test vaqt chegarasi tugagani uchun avtomatik yakunlandi")
+        
+        return {
+            "success": True,
+            "completed_count": completed_count,
+            "message": f"{completed_count} ta test avtomatik yakunlandi"
+        }
+        
+    except Exception as e:
+        logger.error(f"Vaqt chegarasi tekshirishda xatolik: {str(e)}")
+        return {
+            "success": False,
+            "message": f"Xatolik: {str(e)}"
+        }
+
+# Vaqt chegarasi tekshirish va task rejalashtirish
+@shared_task
+def schedule_test_completion(test_result_id, duration_minutes):
+    """
+    Test uchun vaqt chegarasi task'ini rejalashtiradi.
+    Args:
+        test_result_id (int): TestResult ID
+        duration_minutes (int): Test vaqti (daqiqa)
+    """
+    from celery import current_app
+    
+    # Vaqt chegarasi tugaganda auto_complete_test ni ishga tushirish
+    eta = timezone.now() + timezone.timedelta(minutes=duration_minutes)
+    
+    current_app.send_task(
+        'apps.multilevel.tasks.auto_complete_test',
+        args=[test_result_id],
+        eta=eta
+    )
+    
+    logger.info(f"Test {test_result_id} uchun vaqt chegarasi rejalashtirildi: {eta}")

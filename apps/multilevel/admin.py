@@ -1,7 +1,13 @@
 from django.contrib import admin
 from django import forms
-from .models import Exam, Section, Test, Question, Option, UserTest, TestResult
+from django.db import models
 from django.core.exceptions import ValidationError
+
+# Import all models from models.py
+from apps.multilevel.models import (
+    Exam, Section, Test, Question, Option, UserTest, TestResult, TestImage, QuestionImage,
+    SubmissionMedia, ManualReview, QuestionScore, ReviewLog, REVIEW_STATUS_CHOICES
+)
 
 # Option Inline Formset
 class OptionInlineFormset(forms.BaseInlineFormSet):
@@ -16,201 +22,227 @@ class OptionInlineFormset(forms.BaseInlineFormSet):
         ]
 
         if len(active_forms) < 2:
-            raise ValidationError("Variantli savolda kamida 2 ta variant bo‘lishi kerak!")
+            raise ValidationError("Variantli savolda kamida 2 ta variant bo'lishi kerak!")
 
         correct_count = sum(
             1 for form in active_forms
             if form.cleaned_data.get('is_correct', False)
         )
 
-        if correct_count > 1:
-            raise ValidationError("Faqat bitta variant to‘g‘ri bo‘lishi mumkin!")
         if correct_count == 0:
-            raise ValidationError("Hech bo‘lmaganda bitta variant to‘g‘ri bo‘lishi kerak!")
+            raise ValidationError("Kamida bitta to'g'ri javob bo'lishi kerak!")
 
 # Option Inline
 class OptionInline(admin.TabularInline):
     model = Option
-    extra = 2  
     formset = OptionInlineFormset
-    fields = ('text', 'is_correct')
+    extra = 4
 
-# Question uchun maxsus ModelForm
-class QuestionAdminForm(forms.ModelForm):
-    preparation_time = forms.IntegerField(
-        label="Preparation Time (seconds)",
-        min_value=0,
-        required=False,
-        help_text="Enter preparation time in seconds for speaking questions only."
-    )
-    response_time = forms.IntegerField(
-        label="Response Time (seconds)",
-        min_value=0,
-        required=False,
-        help_text="Enter response time in seconds for speaking questions only."
-    )
+# TestImage Inline
+class TestImageInline(admin.TabularInline):
+    model = TestImage
+    extra = 1
 
-    class Meta:
-        model = Question
-        fields = '__all__'
-
-    def clean(self):
-        cleaned_data = super().clean()
-        has_options = cleaned_data.get('has_options')
-        answer = cleaned_data.get('answer')
-        test = cleaned_data.get('test')
-        preparation_time = cleaned_data.get('preparation_time')
-        response_time = cleaned_data.get('response_time')
-
-        section_type = None
-        if test and test.section:
-            section_type = test.section.type
-
-        if section_type in ['writing', 'speaking']:
-            if section_type == 'speaking':
-                if preparation_time is not None and preparation_time < 0:
-                    raise ValidationError("Preparation time cannot be negative!")
-                if response_time is not None and response_time < 0:
-                    raise ValidationError("Response time cannot be negative!")
-            else:
-                if preparation_time is not None or response_time is not None:
-                    raise ValidationError("Preparation and response times are only applicable to speaking tests!")
-            return cleaned_data
-
-        if not has_options and not answer:
-            raise ValidationError("Variantlarsiz savolda javob majburiy!")
-
-        if has_options:
-            option_forms = self.data.get('option_set-TOTAL_FORMS')
-            if not option_forms:
-                raise ValidationError("Variantli savolda kamida 2 ta variant bo‘lishi kerak!")
-
-            total_forms = int(option_forms)
-            active_forms = 0
-            correct_count = 0
-
-            for i in range(total_forms):
-                if f'option_set-{i}-DELETE' not in self.data:
-                    active_forms += 1
-                    if f'option_set-{i}-is_correct' in self.data and self.data[f'option_set-{i}-is_correct'] == 'on':
-                        correct_count += 1
-                    text_field = f'option_set-{i}-text'
-                    if text_field not in self.data or not self.data[text_field]:
-                        raise ValidationError(f"Variant {i+1} matni bo‘sh bo‘lmasligi kerak!")
-
-            if active_forms < 2:
-                raise ValidationError("Variantli savolda kamida 2 ta variant bo‘lishi kerak!")
-
-            if correct_count == 0:
-                raise ValidationError("Hech bo‘lmaganda bitta variant to‘g‘ri bo‘lishi kerak!")
-            if correct_count > 1:
-                raise ValidationError("Faqat bitta variant to‘g‘ri bo‘lishi mumkin!")
-
-        if preparation_time is not None or response_time is not None:
-            raise ValidationError("Preparation and response times are only applicable to speaking tests!")
-
-        return cleaned_data
-
-# Exam Admin
-@admin.register(Exam)
-class ExamAdmin(admin.ModelAdmin):
-    list_display = ('id', 'title', 'language', 'level', 'price','status')
-    search_fields = ('title', 'description')
-    list_filter = ('language', 'level')
-
-    def get_queryset(self, request):
-        return super().get_queryset(request).select_related('language')
-
-# Section Admin
-@admin.register(Section)
-class SectionAdmin(admin.ModelAdmin):
-    list_display = ('title', 'type', 'exam', 'duration')
-    search_fields = ('title', 'description')
-    list_filter = ('type', 'exam')
-
-    def get_queryset(self, request):
-        return super().get_queryset(request).select_related('exam')
-
-# Test Admin
-@admin.register(Test)
-class TestAdmin(admin.ModelAdmin):
-    list_display = ('id', 'title', 'section', 'order')
-    search_fields = ('title', 'description', 'text', 'options_array', 'constraints')
-    list_filter = ('section__exam', 'section__type')
-    fieldsets = (
-        ('Asosiy ma\'lumotlar', {
-            'fields': ('section', 'title', 'description', 'order')
-        }),
-        ('Kontent', {
-            'fields': ('picture', 'audio', 'text_title', 'text', 'options_array', 'sample', 'constraints')
-        }),
-        ('Writing test vaqtlari', {
-            'fields': ('response_time', 'upload_time'),
-            'description': 'Faqat writing section uchun javob berish va rasm yuklash vaqtini belgilang (sekundlarda)',
-            'classes': ('collapse',)
-        }),
-    )
-
-    def get_queryset(self, request):
-        return super().get_queryset(request).select_related('section__exam')
-
-    def get_fieldsets(self, request, obj=None):
-        fieldsets = super().get_fieldsets(request, obj)
-        if obj and obj.section and obj.section.type != 'writing':
-            # Writing bo'lmagan sectionlar uchun vaqt maydonlarini yashirish
-            fieldsets = list(fieldsets)
-            fieldsets = [fieldset for fieldset in fieldsets if fieldset[0] != 'Writing test vaqtlari']
-        return fieldsets
-
-    def save_model(self, request, obj, form, change):
-        # Writing bo'lmagan sectionlar uchun vaqt maydonlarini tozalash
-        if obj.section and obj.section.type != 'writing':
-            obj.response_time = None
-            obj.upload_time = None
-        super().save_model(request, obj, form, change)
-
-    def get_list_display(self, request):
-        list_display = list(super().get_list_display(request))
-        # Writing section uchun vaqt maydonlarini ko'rsatish
-        if 'response_time' not in list_display:
-            list_display.append('response_time')
-        if 'upload_time' not in list_display:
-            list_display.append('upload_time')
-        return list_display
-
-    def get_fieldsets(self, request, obj=None):
-        fieldsets = super().get_fieldsets(request, obj)
-        if obj and obj.section and obj.section.type != 'writing':
-            # Writing bo'lmagan sectionlar uchun vaqt maydonlarini yashirish
-            fieldsets = list(fieldsets)
-            fieldsets = [fieldset for fieldset in fieldsets if fieldset[0] != 'Writing test vaqtlari']
-        return fieldsets
+# QuestionImage Inline
+class QuestionImageInline(admin.TabularInline):
+    model = QuestionImage
+    extra = 1
 
 # Question Admin
 @admin.register(Question)
 class QuestionAdmin(admin.ModelAdmin):
-    list_display = ('text_short', 'test', 'has_options')
-    search_fields = ('text', 'answer')
-    list_filter = ('test__section__exam', 'has_options')
-    inlines = [OptionInline]
-    form = QuestionAdminForm
+    list_display = ['id', 'text', 'test', 'has_options']
+    list_filter = ['test__section__type', 'test__section__exam__level']
+    search_fields = ['text', 'test__title']
+    inlines = [OptionInline, QuestionImageInline]
+    
+    fieldsets = (
+        (None, {
+            'fields': ('test', 'text', 'picture', 'answer', 'has_options')
+        }),
+        ('Speaking Parameters', {
+            'fields': ('preparation_time', 'response_time'),
+            'classes': ('collapse',),
+            'description': 'Speaking settings for preparation and response time'
+        }),
+    )
 
-    def text_short(self, obj):
-        return obj.text[:50]
-    text_short.short_description = "Savol matni"
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('test__section__exam')
 
-    def save_model(self, request, obj, form, change):
-        if form.cleaned_data.get('test') and form.cleaned_data.get('test').section.type == 'speaking':
-            obj.preparation_time = form.cleaned_data.get('preparation_time')
-            obj.response_time = form.cleaned_data.get('response_time')
-        super().save_model(request, obj, form, change)
+# Test Admin
+@admin.register(Test)
+class TestAdmin(admin.ModelAdmin):
+    list_display = ['id', 'title', 'section_info', 'level_info']
+    list_filter = ['section__type', 'section__exam__level']
+    search_fields = ['title', 'section__title', 'text']
+    inlines = [TestImageInline]
+    
+    fieldsets = (
+        (None, {
+            'fields': ('section', 'title', 'description', 'picture', 'audio', 'text_title', 'text', 'sample', 'constraints', 'order')
+        }),
+        ('Writing Parameters', {
+            'fields': ('response_time', 'upload_time'),
+            'classes': ('collapse',),
+            'description': 'Writing settings for response and upload time'
+        }),
+    )
+    
+    def section_info(self, obj):
+        return f"{obj.section.title} ({obj.section.get_type_display()})"
+    section_info.short_description = 'Section'
+    
+    def level_info(self, obj):
+        return obj.section.exam.get_level_display()
+    level_info.short_description = 'Level'
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('section__exam')
+
+# Section Admin
+@admin.register(Section)
+class SectionAdmin(admin.ModelAdmin):
+    list_display = ['id', 'title', 'type', 'exam_info', 'duration']
+    list_filter = ['type', 'exam__level']
+    search_fields = ['title', 'exam__title']
+    
+    def exam_info(self, obj):
+        return f"{obj.exam.title} ({obj.exam.get_level_display()})"
+    exam_info.short_description = 'Exam'
+    
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('exam')
+
+# Exam Admin
+@admin.register(Exam)
+class ExamAdmin(admin.ModelAdmin):
+    list_display = ['id', 'title', 'level', 'language', 'price', 'order_id', 'status']
+    list_filter = ['level', 'language', 'status']
+    search_fields = ['title']
+    list_editable = ['order_id', 'status']
 
 # TestResult Admin
 @admin.register(TestResult)
 class TestResultAdmin(admin.ModelAdmin):
-    list_display = ('user_test', 'section', 'status', 'score', 'start_time')
-    search_fields = ('user_test__user__username', 'section__title')
-    list_filter = ('status', 'section__type', 'user_test__exam')
+    list_display = ['id', 'user_name', 'section_info', 'exam_info', 'score', 'status', 'created_at']
+    list_filter = ['status', 'section__type', 'user_test__exam__level']
+    search_fields = ['user_test__user__first_name', 'user_test__user__last_name', 'user_test__user__username']
+    readonly_fields = ['start_time', 'end_time', 'created_at']
+    
+    def user_name(self, obj):
+        return obj.user_test.user.get_full_name()
+    user_name.short_description = 'User'
+    
+    def section_info(self, obj):
+        return f"{obj.section.title} ({obj.section.get_type_display()})"
+    section_info.short_description = 'Section'
+    
+    def exam_info(self, obj):
+        return f"{obj.user_test.exam.title} ({obj.user_test.exam.get_level_display()})"
+    exam_info.short_description = 'Exam'
+    
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related(
+            'user_test__user', 'user_test__exam', 'section'
+        )
+
+# UserTest Admin
+@admin.register(UserTest)
+class UserTestAdmin(admin.ModelAdmin):
+    list_display = ['id', 'user_name', 'exam_info', 'score', 'status', 'created_at']
+    list_filter = ['status', 'exam__level', 'payment_status']
+    search_fields = ['user__first_name', 'user__last_name', 'user__username', 'exam__title']
+    readonly_fields = ['created_at', 'updated_at']
+    
+    def user_name(self, obj):
+        return obj.user.get_full_name()
+    user_name.short_description = 'User'
+    
+    def exam_info(self, obj):
+        return f"{obj.exam.title} ({obj.exam.get_level_display()})"
+    exam_info.short_description = 'Exam'
+    
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('user', 'exam')
+
+# QuestionScore Inline
+class QuestionScoreInline(admin.TabularInline):
+    model = QuestionScore
+    extra = 0
+
+# ReviewLog Inline
+class ReviewLogInline(admin.TabularInline):
+    model = ReviewLog
+    extra = 0
+    readonly_fields = ['reviewer', 'action', 'question_number', 'old_score', 'new_score', 'comment', 'created_at']
+
+# ManualReview Admin
+@admin.register(ManualReview)
+class ManualReviewAdmin(admin.ModelAdmin):
+    list_display = ['id', 'user_name', 'section', 'exam_info', 'status', 'total_score', 'reviewer_name', 'created_at']
+    list_filter = ['status', 'section', 'test_result__user_test__exam__level']
+    search_fields = ['test_result__user_test__user__first_name', 'test_result__user_test__user__last_name']
+    readonly_fields = ['created_at', 'updated_at']
+    inlines = [QuestionScoreInline, ReviewLogInline]
+    
+    def user_name(self, obj):
+        return obj.test_result.user_test.user.get_full_name()
+    user_name.short_description = 'User'
+    
+    def exam_info(self, obj):
+        return f"{obj.test_result.user_test.exam.title} ({obj.test_result.user_test.exam.get_level_display()})"
+    exam_info.short_description = 'Exam'
+    
+    def reviewer_name(self, obj):
+        if obj.reviewer:
+            return obj.reviewer.get_full_name()
+        return "-"
+    reviewer_name.short_description = 'Reviewer'
 
     def get_queryset(self, request):
-        return super().get_queryset(request).select_related('user_test__user', 'section__exam')
+        return super().get_queryset(request).select_related(
+            'test_result__user_test__user', 'test_result__user_test__exam', 'reviewer'
+        )
+
+# SubmissionMedia Admin
+@admin.register(SubmissionMedia)
+class SubmissionMediaAdmin(admin.ModelAdmin):
+    list_display = ['id', 'user_name', 'section', 'question_number', 'file_type', 'uploaded_at']
+    list_filter = ['section', 'file_type', 'test_result__user_test__exam__level']
+    search_fields = ['test_result__user_test__user__first_name', 'test_result__user_test__user__last_name']
+    
+    def user_name(self, obj):
+        return obj.test_result.user_test.user.get_full_name()
+    user_name.short_description = 'User'
+    
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related(
+            'test_result__user_test__user', 'test_result__user_test__exam'
+        )
+
+# ReviewLog Admin
+@admin.register(ReviewLog)
+class ReviewLogAdmin(admin.ModelAdmin):
+    list_display = ['id', 'user_name', 'section', 'action', 'reviewer_name', 'created_at']
+    list_filter = ['action', 'manual_review__section', 'manual_review__test_result__user_test__exam__level']
+    search_fields = ['manual_review__test_result__user_test__user__first_name', 'manual_review__test_result__user_test__user__last_name']
+    readonly_fields = ['manual_review', 'reviewer', 'action', 'question_number', 'old_score', 'new_score', 'comment', 'created_at']
+    
+    def user_name(self, obj):
+        return obj.manual_review.test_result.user_test.user.get_full_name()
+    user_name.short_description = 'User'
+    
+    def section(self, obj):
+        return obj.manual_review.section
+    
+    def reviewer_name(self, obj):
+        if obj.reviewer:
+            return obj.reviewer.get_full_name()
+        return "-"
+    reviewer_name.short_description = 'Reviewer'
+    
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related(
+            'manual_review__test_result__user_test__user', 'reviewer'
+        )
