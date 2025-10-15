@@ -15,6 +15,7 @@ from .serializers import (
     VisitorCreateSerializer, 
     VisitorUpdateSerializer
 )
+from apps.utils.telegram import telegram_service
 
 logger = logging.getLogger(__name__)
 
@@ -86,56 +87,28 @@ class VisitorViewSet(viewsets.ModelViewSet):
     def send_telegram_notification(self, visitor):
         """Send notification to Telegram group about new registration"""
         try:
-            bot_token = getattr(settings, 'TELEGRAM_BOT_TOKEN', None)
-            chat_id = getattr(settings, 'TELEGRAM_VISITOR_CHAT_ID', None)
-            
-            # Debug uchun log qo'shamiz
-            logger.info(f"Bot token: {bot_token[:10]}..." if bot_token else "Bot token not found")
-            logger.info(f"Chat ID: {chat_id}")
-            
-            if not bot_token or not chat_id:
-                logger.warning("Telegram bot token or visitor chat ID not configured")
-                logger.warning(f"Bot token exists: {bool(bot_token)}")
-                logger.warning(f"Chat ID exists: {bool(chat_id)}")
-                return
-            
             # Tashkent vaqti bilan ko'rsatish
             tashkent_time = timezone.localtime(visitor.created_at, timezone=timezone.get_fixed_timezone(300))  # UTC+5
             formatted_time = tashkent_time.strftime('%d.%m.%Y %H:%M')
             
-            message = f"""
-🆕 Yangi kursga ro'yxatdan o'tish arizasi!
-
-👤 Foydalanuvchi: {visitor.full_name}
-📱 Telefon: {visitor.phone_number}
-📅 Sana: {formatted_time}
-🔗 Admin panel: https://api.turantalim.uz/admin/visitor/visitor/{visitor.id}/
-"""
+            logger.info(f"Sending visitor notification for visitor {visitor.id}: {visitor.full_name}")
             
-            url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-            data = {
-                'chat_id': chat_id,
-                'text': message,
-                'parse_mode': 'HTML'
-            }
+            # Use centralized telegram service
+            success = telegram_service.send_visitor_notification(
+                full_name=visitor.full_name,
+                phone_number=visitor.phone_number,
+                date=formatted_time,
+                visitor_id=visitor.id,
+                admin_url="https://api.turantalim.uz/admin"
+            )
             
-            logger.info(f"Sending request to: {url}")
-            logger.info(f"Request data: {data}")
-            
-            response = requests.post(url, data=data, timeout=10)
-            logger.info(f"Response status: {response.status_code}")
-            logger.info(f"Response content: {response.text}")
-            
-            response.raise_for_status()
-            
-            logger.info(f"Telegram notification sent successfully for visitor {visitor.id}")
+            if success:
+                logger.info(f"Telegram notification sent successfully for visitor {visitor.id}")
+            else:
+                logger.warning(f"Failed to send Telegram notification for visitor {visitor.id}")
             
         except Exception as e:
-            logger.error(f"Failed to send Telegram notification: {str(e)}")
-            logger.error(f"Exception type: {type(e).__name__}")
-            if hasattr(e, 'response'):
-                logger.error(f"Response status: {e.response.status_code}")
-                logger.error(f"Response content: {e.response.text}")
+            logger.error(f"Unexpected error sending Telegram notification for visitor {visitor.id}: {str(e)}", exc_info=True)
     
     @swagger_auto_schema(
         method='post',

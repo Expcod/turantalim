@@ -22,11 +22,21 @@ class UserAdmin(BaseUserAdmin):
         }),
     )
 
-    list_display = ("id", "phone", "first_name", "last_name", "is_active")
+    list_display = ("id", "phone", "first_name", "last_name", "is_active", "reviewer_status")
     list_display_links = ("id", "phone", "first_name", "last_name")
     search_fields = ("phone", "first_name", "last_name", "email")
-    list_filter = ("is_active",)
+    list_filter = ("is_active", "groups")
     ordering = ("-id",)
+    
+    def reviewer_status(self, obj):
+        """Show if user is a reviewer"""
+        from django.utils.html import format_html
+        if obj.groups.filter(name='Reviewer').exists():
+            return format_html(
+                '<span style="color: green; font-weight: bold;">✓ Tekshiruvchi</span>'
+            )
+        return '-'
+    reviewer_status.short_description = 'Reviewer'
 
 @admin.register(VerificationCode)
 class VerificationCodeAdmin(admin.ModelAdmin):

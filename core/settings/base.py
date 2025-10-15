@@ -61,6 +61,7 @@ CUSTOM_APPS = [
 THIRD_PARTY_APPS = [
     'corsheaders',
     'rest_framework',
+    'rest_framework.authtoken',
     'drf_yasg',
     'drf_spectacular',
     'payme',
@@ -77,9 +78,12 @@ PAYME_ACCOUNT_MODEL = "apps.payment.models.ExamPayment"
 PAYME_ONE_TIME_PAYMENT = True  
 
 #telegram settings
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN") or env.str("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID") or env.str("TELEGRAM_CHAT_ID")
-TELEGRAM_VISITOR_CHAT_ID = os.environ.get("TELEGRAM_VISITOR_CHAT_ID") or env.str("TELEGRAM_VISITOR_CHAT_ID")  # Visitor app uchun alohida chat ID
+TELEGRAM_BOT_TOKEN = os.environ.get("BOT_TOKEN") or env.str("BOT_TOKEN", default="")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID") or env.str("TELEGRAM_CHAT_ID", default="")
+TELEGRAM_VISITOR_CHAT_ID = os.environ.get("TELEGRAM_VISITOR_CHAT_ID") or env.str("TELEGRAM_VISITOR_CHAT_ID", default="")
+# Manual Review Notifications
+TELEGRAM_ADMIN_ID = os.environ.get("ADMIN_ID") or env.str("ADMIN_ID", default="")
+TELEGRAM_TEACHER_GROUP_ID = os.environ.get("TEACHER_GROUP_ID") or env.str("TEACHER_GROUP_ID", default="")
 
 
 #openai settings
@@ -110,12 +114,17 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'apps.multilevel.tasks.check_expired_tests',
         'schedule': 60.0,  # Har 60 soniyada (1 daqiqada) tekshirish
     },
+    'reset-stale-reviews': {
+        'task': 'apps.multilevel.tasks.reset_stale_manual_reviews',
+        'schedule': 1800.0,  # Har 30 daqiqada (1800 soniyada) tekshirish
+    },
 }
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         # main authenticator must be at the top
         "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "rest_framework.authentication.TokenAuthentication",  # For admin dashboard
         "rest_framework.authentication.SessionAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": (
@@ -126,7 +135,7 @@ REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.LimitOffsetPagination",
     "PAGE_SIZE": 10,
     "DEFAULT_THROTTLE_RATES": {"anon": "10/second", "user": "10/second"},
-    # "EXCEPTION_HANDLER": "utils.exceptionhandler.custom_exception_handler",
+    "EXCEPTION_HANDLER": "apps.common.exception_handler.custom_exception_handler",
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
 
@@ -182,6 +191,16 @@ LOGGING = {
             'level': 'INFO',
             'propagate': False,
         },
+        'apps.common': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'rest_framework_simplejwt': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
     },
 }
 
@@ -196,9 +215,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-# CORS_ALLOW_ALL_ORIGINS = True
 
-# CORS_ALLOW_CREDENTIALS = True
 
 ROOT_URLCONF = 'core.urls'
 

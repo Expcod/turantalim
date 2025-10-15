@@ -1,0 +1,276 @@
+{
+  "info": {
+    "name": "Turantalim API",
+    "description": "API collection for Turantalim exam system - Frontend integration",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"+998901234567\",\n  \"password\": \"testpassword\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/token/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "token", ""]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/logout/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "logout", ""]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Exams",
+      "item": [
+        {
+          "name": "Get Exam List",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/multilevel/exams/",
+              "host": ["{{base_url}}"],
+              "path": ["multilevel", "exams", ""]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Writing Section",
+      "item": [
+        {
+          "name": "Submit Writing",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "user_test_id",
+                  "value": "123",
+                  "type": "text"
+                },
+                {
+                  "key": "exam_id",
+                  "value": "456",
+                  "type": "text"
+                },
+                {
+                  "key": "section_id",
+                  "value": "789",
+                  "type": "text"
+                },
+                {
+                  "key": "question_1_image_1",
+                  "type": "file",
+                  "src": "/path/to/task1.jpg"
+                },
+                {
+                  "key": "question_2_image_1",
+                  "type": "file",
+                  "src": "/path/to/task2.jpg"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/multilevel/testcheck/writing/",
+              "host": ["{{base_url}}"],
+              "path": ["multilevel", "testcheck", "writing", ""]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Writing Result",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/multilevel/test-result/{{test_result_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["multilevel", "test-result", "{{test_result_id}}", ""]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Speaking Section",
+      "item": [
+        {
+          "name": "Submit Speaking",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "user_test_id",
+                  "value": "123",
+                  "type": "text"
+                },
+                {
+                  "key": "exam_id",
+                  "value": "456",
+                  "type": "text"
+                },
+                {
+                  "key": "section_id",
+                  "value": "790",
+                  "type": "text"
+                },
+                {
+                  "key": "question_1_audio",
+                  "type": "file",
+                  "src": "/path/to/part1.mp3"
+                },
+                {
+                  "key": "question_2_audio",
+                  "type": "file",
+                  "src": "/path/to/part2.mp3"
+                },
+                {
+                  "key": "question_3_audio",
+                  "type": "file",
+                  "src": "/path/to/part3.mp3"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/multilevel/testcheck/speaking/",
+              "host": ["{{base_url}}"],
+              "path": ["multilevel", "testcheck", "speaking", ""]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Speaking Result",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/multilevel/test-result/{{test_result_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["multilevel", "test-result", "{{test_result_id}}", ""]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Test Results",
+      "item": [
+        {
+          "name": "Get All Test Results",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/multilevel/test-results/",
+              "host": ["{{base_url}}"],
+              "path": ["multilevel", "test-results", ""]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Specific Test Result",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/multilevel/test-result/{{test_result_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["multilevel", "test-result", "{{test_result_id}}", ""]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Overall Exam Result",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/multilevel/exam-results/multilevel-tys/?user_test_id={{user_test_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["multilevel", "exam-results", "multilevel-tys", ""],
+              "query": [
+                {
+                  "key": "user_test_id",
+                  "value": "{{user_test_id}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "test_result_id",
+      "value": "123",
+      "type": "string"
+    },
+    {
+      "key": "user_test_id",
+      "value": "123",
+      "type": "string"
+    }
+  ]
+}

@@ -1,0 +1,258 @@
+turan_talim_bot/
+│
+├── bot.py
+├── config.py
+├── database.py
+├── requirements.txt
+├── README.md
+│
+├── handlers/
+│   ├── __init__.py
+│   ├── teacher.py
+│   ├── student.py
+│   └── admin.py        # optional
+│
+├── keyboards/
+│   ├── __init__.py
+│   ├── inline.py
+│   └── reply.py
+│
+└── utils/
+    ├── __init__.py
+    ├── api.py
+    ├── logger.py
+    └── states.py
+
+📘 Har bir faylning vazifasi
+bot.py
+
+Botni ishga tushiruvchi asosiy fayl.
+
+Dispatcher, webhook, logging sozlamalari shu yerda bo‘ladi.
+
+handlers va middlewaresni ro‘yxatdan o‘tkazadi.
+
+🧩 Prompt misol:
+
+Write bot.py using Aiogram 3.x.
+Configure dispatcher, include routers from handlers, and create a webhook endpoint /telegram-webhook/.
+Use config.py for environment variables (BOT_TOKEN, DJANGO_API_URL, DJANGO_API_KEY).
+Enable logging and graceful shutdown.
+Use aiohttp web server for webhook.
+
+config.py
+
+Muhit o‘zgaruvchilarini (dotenv) orqali o‘qiydi.
+
+Sozlamalarni global Config klassi ko‘rinishida beradi.
+
+🧩 Prompt misol:
+
+Write a config.py file that loads environment variables using python-dotenv.
+It should include BOT_TOKEN, DJANGO_API_URL, DJANGO_API_KEY, and WEBHOOK_URL.
+Add a Config class with typed attributes.
+
+database.py
+
+Agar submissionsni vaqtincha lokal DB’da saqlash kerak bo‘lsa (SQLAlchemy bilan).
+
+Submission, Teacher, Student modellari joylashadi.
+
+🧩 Prompt misol:
+
+Write a database.py using SQLAlchemy (async engine).
+Define models: Submission(id, user_id, section, text, audio_path, status, score, feedback, teacher_id, created_at).
+
+handlers/teacher.py
+
+O‘qituvchilar uchun asosiy logika shu yerda:
+
+Yangi submissionlarni ko‘rish
+
+“Tekshirilmoqda” statusi
+
+“Baho qo‘yish” uchun inline tugmalar
+
+🧩 Prompt misol:
+
+Write handlers/teacher.py for Aiogram 3.x.
+Include handlers for inline buttons: “🟢 Mark as Checked”, “📝 Add Score”.
+When teacher sends score, update Django via utils/api.py.
+Use FSM state to collect score and feedback.
+
+handlers/student.py
+
+Talabalar uchun natijalarni olish (agar kerak bo‘lsa).
+
+Foydalanuvchiga “sizning writing javobingiz baholandi” kabi xabar yuborish.
+
+🧩 Prompt misol:
+
+Write handlers/student.py that handles messages for notifying students when their submission is reviewed.
+Include a function notify_student(user_id, score, feedback).
+
+keyboards/inline.py
+
+Inline tugmalar: “🟢 Mark as Checked”, “📝 Add Score”, “❌ Cancel”.
+
+🧩 Prompt misol:
+
+Create keyboards/inline.py with helper functions returning inline keyboards for teacher actions.
+
+utils/api.py
+
+Django backend bilan aloqalar shu faylda: GET, PATCH, POST funksiyalar.
+
+Masalan:
+
+async def update_submission_status(id, score, feedback, teacher_id):
+    # PATCH request to Django REST API
+
+
+🧩 Prompt misol:
+
+Write utils/api.py that connects to Django API using aiohttp.
+Include async functions:
+
+get_pending_submissions()
+
+update_submission_status(id, data)
+
+send_notification_to_student(user_id, message)
+
+utils/logger.py
+
+Konsol va faylga log yozadi. (helpful for debugging)
+
+🧩 Prompt misol:
+
+Write utils/logger.py to configure logging with colored console output and optional file handler.
+
+utils/states.py
+
+Aiogram FSM (StateMachine) uchun state’lar.
+
+🧩 Prompt misol:
+
+Write utils/states.py defining states for teacher scoring (ScoreState: waiting_for_score, waiting_for_feedback).
+
+README.md
+
+Loyiha haqida to‘liq ko‘rsatma (setup, webhook, API ulanishi, run local test).
+
+🧩 Prompt misol:
+
+Write README.md explaining:
+
+Environment setup
+
+How to set webhook with ngrok
+
+How to connect Django API
+
+Example teacher workflow (receive → review → submit)
+
+You are an expert backend developer using **Python 3.11+**, **Aiogram 3.x**, and **aiohttp**.  
+Your task is to create the **main entry file** (`bot.py`) for a Telegram bot project called **TuranTalim**.
+
+### Project Purpose:
+Students submit Turkish exam answers (Listening, Reading, Writing, Speaking) via the website (Django backend).  
+Writing and Speaking submissions are manually checked by teachers through this Telegram bot.
+
+### Requirements for `bot.py`:
+1. Initialize the bot and dispatcher using **Aiogram 3.x**.
+2. Load all configuration values (`BOT_TOKEN`, `DJANGO_API_URL`, `DJANGO_API_KEY`, `WEBHOOK_URL`) from `config.py`.
+3. Set up a **webhook-based** bot using **aiohttp web server**:
+   - Endpoint: `/telegram-webhook/`
+   - Include startup and shutdown handlers.
+4. Include and register routers from:
+   - `handlers.teacher`
+   - `handlers.student`
+5. Use logging (via `utils.logger`).
+6. Support graceful shutdown and exception handling.
+7. Send a test message on startup to confirm webhook works.
+8. The file should be production-ready and compatible with other modules.
+
+### Additional Info:
+- Folder structure:
+
+turan_talim_bot/
+├── bot.py
+├── config.py
+├── handlers/
+│ ├── teacher.py
+│ └── student.py
+├── utils/
+│ ├── logger.py
+│ └── api.py
+
+- Use async/await properly.
+- All code must follow PEP8.
+- Include detailed comments for key sections.
+
+### Expected Output:
+A complete `bot.py` file that:
+- Starts an aiohttp web server
+- Initializes Aiogram Dispatcher
+- Registers routers
+- Configures webhook
+- Logs startup and shutdown events
+- Can be run locally using:
+```bash
+python bot.py
+
+
+---
+
+## 🧾 EXPECTED OUTPUT (Cursor shu tarzda yozadi)
+
+Quyida Cursor’dan kutish kerak bo‘lgan chiqish namunasi (u shunga o‘xshash kod yozadi):
+
+```python
+# bot.py
+import asyncio
+import logging
+from aiohttp import web
+from aiogram import Bot, Dispatcher
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
+
+from config import Config
+from handlers import teacher, student
+from utils.logger import setup_logger
+
+logger = setup_logger()
+
+async def on_startup(app: web.Application):
+    bot = app["bot"]
+    await bot.set_webhook(Config.WEBHOOK_URL)
+    logger.info("Webhook successfully set.")
+    await bot.send_message(Config.ADMIN_ID, "✅ TuranTalim bot started successfully!")
+
+async def on_shutdown(app: web.Application):
+    bot = app["bot"]
+    await bot.delete_webhook()
+    logger.info("Webhook removed. Bot stopped.")
+
+def create_app() -> web.Application:
+    bot = Bot(token=Config.BOT_TOKEN, parse_mode="HTML")
+    dp = Dispatcher()
+
+    dp.include_router(teacher.router)
+    dp.include_router(student.router)
+
+    app = web.Application()
+    app["bot"] = bot
+    SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path="/telegram-webhook/")
+    setup_application(app, dp, bot=bot)
+
+    app.on_startup.append(on_startup)
+    app.on_shutdown.append(on_shutdown)
+
+    return app
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    app = create_app()
+    web.run_app(app, host="0.0.0.0", port=8080)
+
+Continue with handlers/teacher.py

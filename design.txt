@@ -1,0 +1,312 @@
+A’lo — juda aniq va amaliy talablaring bor. Quyida men sen so‘ragan “admin dashboard” uchun to‘liq UI/UX va texnik yo‘l-xaritasini — interfeys maketlari, komponentlar, ma’lumot modeli, kerakli API endpointlar, fayl saqlash va audio/player talablari, xavfsizlik va notifikatsiya oqimlari bilan birga — bir martalik, ishlashga tayyor tavsiyalar shaklida beraman. Sen hozircha bu yechimni vaqtinchalik ishlatmoqchisiz, shuning uchun oddiy, ishonchli va tez yo‘l tanlangan.
+
+Men hammasini Oʻzbek tilida to‘liq tushuntirdim — hoziroq boshlaymiz 👇
+
+# 1) Dashbord — asosiy UX/layaut (ko‘rinish va oqim)
+
+Umumiy: adminga maxsus kirish, bosh sahifa — “Pending exams” ro‘yxati. Har bir qator: foydalanuvchi ismi/familiyasi, imtihon nomi, level (Cefr 1 / TYS / multilevel), sanasi, status (Pending / In review / Reviewed), harakatlar (Open).
+
+## A — Bosh sahifa: “New Submissions”
+
+* Filtrlar (yuqorida):
+
+  * Imtihon turi (tys, CEFR1, ...) — dropdown
+  * Section (Writing, Speaking) — chekbox (faqat ko‘rsatish)
+  * Sana oralig‘i
+  * Qidiruv: ism/familiya/phone
+  * Status: Pending / Reviewing / Checked
+* Roʻyxat (table):
+
+  * Checkbox (bulk action)
+  * Ism, Familiya (clickable)
+  * Imtihon nomi (clickable)
+  * Level
+  * Date
+  * Section(s) (Writing, Speaking — text)
+  * Status (badge)
+  * “Open” tugmasi
+
+## B — Individual submission sahifasi (Exam detail)
+
+Sahifa 2 ustunli bo‘lsin:
+
+* Chap ustun (70% width): javoblarni ko‘rsatadi.
+* O‘ng ustun (30%): baholash paneli (score inputs, save button), audit log, action buttons.
+
+### Chap ustun mazmuni:
+
+* Top: Foydalanuvchi info (ism, email/phone, profil link)
+* Keyin: “Exam: <name> | Level: <level> | Date: <date>”
+* Tabs: 4 ta tab (Listening, Reading, Writing, Speaking) — Listening va Reading read-only (bot tomonidan berilgan ballar ko‘rinadi). Writing va Speaking editable baholash.
+* Har bir tab ichida:
+
+  * Savollar ro‘yxati (Question 1, Question 2, va h.k.)
+  * Har bir savol uchun:
+
+    * Writing: image gallery (rasmlar) — har bir rasm yirik prevyu; rasm ostida `image_id` ko‘rsin; rasm bosilganida lightbox (zoom).
+    * Speaking: audio list — har bir audio uchun audio player (Play / Pause / Stop / Seek, duration, download link).
+    * Agar kerak bo‘lsa javob matni (agar writing text also possible).
+
+### O‘ng ustun — Baholash paneli:
+
+* Top: Section nomi (Writing / Speaking)
+* Individual question scoring area (agar imtihon savollari 2 ta bo‘lsa):
+
+  * For each question:
+
+    * Score input (0–100) yoki 0–10 (sen qaysi scale ishlatsang)
+    * Comment textarea (optional)
+* Global score (autocalc or manual): total / average
+* Save as Draft / Submit buttons
+* Reviewer info: `Reviewed by: <teacher name>` (auto-filled on submit)
+* Audit log (past actions: who, when, old score -> new score)
+* Notify student toggle (checkbox, default ON)
+
+# 2) Wireframe / Quick mock (markdown)
+
+> Bosh sahifa:
+> `[Filter Panel]`
+> `| Checkbox | Ism Fam | Imtihon | Level | Date | Sections | Status | Open |`
+
+> Submission page:
+> Left:
+
+```
+[User card]
+[TABS: Listening | Reading | Writing | Speaking]
+
+-- Writing Tab --
+Q1:
+  - Image 1 (thumb)  Image 2 (thumb)  Image 3 (thumb)
+Q2:
+  - Image 1  Image 2
+```
+
+Right:
+
+```
+[Section: Writing]
+Q1 score: [  0-100  ]  Comment: [........]
+Q2 score: [  0-100  ]  Comment: [........]
+Total: [  85  ]   [Save draft] [Submit]
+Reviewer: Me (auto)
+[Audit log]
+```
+
+# 3) Ma’lumotlar modeli (Django ORM misoli)
+
+Quyidagi modellashish chalkashmaslik va izchillik uchun tavsiya qilinadi.
+
+```python
+# exams/models.py
+from django.db import models
+from django.conf import settings
+
+class Exam(models.Model):
+    name = models.CharField(max_length=200)
+    level = models.CharField(max_length=50)  # e.g., "CEFR1", "tys"
+    date = models.DateTimeField()
+    # other fields...
+
+class Submission(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    exam = models.ForeignKey(Exam, on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+    # overall status for writing/speaking review
+    writing_status = models.CharField(max_length=20, default='pending')  # pending, reviewing, checked
+    speaking_status = models.CharField(max_length=20, default='pending')
+    writing_score = models.FloatField(null=True, blank=True)   # final saved score
+    speaking_score = models.FloatField(null=True, blank=True)
+    # who reviewed
+    writing_reviewer = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, related_name='writing_reviewed', on_delete=models.SET_NULL)
+    speaking_reviewer = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, related_name='speaking_reviewed', on_delete=models.SET_NULL)
+    writing_reviewed_at = models.DateTimeField(null=True, blank=True)
+    speaking_reviewed_at = models.DateTimeField(null=True, blank=True)
+
+class QuestionMedia(models.Model):
+    """
+    Stores media (images or audio) for a specific submission question.
+    Important: includes question_number to avoid mixing files between questions.
+    """
+    submission = models.ForeignKey(Submission, on_delete=models.CASCADE, related_name='media')
+    section = models.CharField(max_length=20, choices=(('writing','writing'),('speaking','speaking')))
+    question_number = models.PositiveSmallIntegerField()  # 1,2,...
+    file = models.FileField(upload_to='submissions/%Y/%m/%d/')
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    # mime type or is_audio flag can help in frontend
+
+class ReviewLog(models.Model):
+    submission = models.ForeignKey(Submission, on_delete=models.CASCADE, related_name='logs')
+    reviewer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    section = models.CharField(max_length=20)
+    question_number = models.PositiveSmallIntegerField(null=True, blank=True)
+    old_score = models.FloatField(null=True, blank=True)
+    new_score = models.FloatField(null=True, blank=True)
+    comment = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+```
+
+**Izoh:** `QuestionMedia` ichida `section` va `question_number` bo‘lishi rasm/aydoni to‘g‘ri savol bilan bog‘lashga yordam beradi va 1-savoldagi rasm bilan 2-savoldagi rasm aralashmasligini kafolatlaydi.
+
+# 4) Kerakli API endpointlar (Django REST Framework)
+
+* `GET /api/admin/submissions/?status=writing_pending` — pending submissions list (paginated)
+* `GET /api/admin/submissions/{submission_id}/` — full submission details + media list grouped by section & question_number
+* `PATCH /api/admin/submissions/{submission_id}/writing/` — update writing scores and reviewer info (payload: per-question scores, comments, total)
+* `PATCH /api/admin/submissions/{submission_id}/speaking/` — update speaking scores
+* `POST /api/admin/submissions/{submission_id}/logs/` — optional, create review log (or logs created server-side)
+* `GET /api/admin/submissions/{submission_id}/media/` — list media files, with URLs (signed if needed)
+
+Payload example for PATCH:
+
+```json
+{
+  "question_scores": {
+    "1": {"score": 85, "comment": "Good idea but grammar mistakes."},
+    "2": {"score": 90, "comment": "Clear structure."}
+  },
+  "total_score": 87.5,
+  "notified": true
+}
+```
+
+# 5) Frontend (UI) texnik jihatlar — komponentlar
+
+Tavsiya: React + Tailwind (yoki Django admin + custom templates agar tezroq bo‘lishi kerak bo‘lsa). Men havola qilib React komponentlarini taklif qilaman, chunki ular interaktiv audio player va image lightbox uchun qulay.
+
+## Komponentlar
+
+* `SubmissionsList` — filterable table
+* `SubmissionDetail` — parent component with Tabs
+* `MediaGallery` — image grid per question (ensure correct mapping by question_number)
+* `AudioList` — audio items with HTML5 player
+* `ScorePanel` — inputs for per-question scores and Save/Submit
+* `AuditLog` — show logs
+* `ConfirmModal` — for submit confirmation
+
+## Audio player
+
+* Use native HTML5 `<audio>` element; show controls: Play / Pause / Stop / Seek.
+* Problem: multiple audios on page; ensure only one plays at a time:
+
+  * Use a simple JS utility: when starting playback on one audio, pause all others.
+* Visual design: show waveform optionally (later) using WaveSurfer if needed.
+
+Minimal JS for one-at-a-time:
+
+```js
+const audios = document.querySelectorAll('audio');
+audios.forEach(a => {
+  a.addEventListener('play', () => {
+    audios.forEach(x => { if (x !== a) x.pause(); });
+  });
+});
+```
+
+# 6) Fayllarni aralashtirib yubormaslik (image-question mapping)
+
+**Qoidalar:**
+
+* Har bir uploaded file DBda `submission_id`, `section`, `question_number` bilan saqlansin.
+* Storage path masalan: `submissions/{submission_id}/{section}/q{question_number}/{filename}`
+* Frontendda mediani render qilishda GROUP BY `question_number`.
+* Yuklash tarafida ham client yoki backend `question_number`ni yuborishi shart. (Agar yaratilgan bo‘lsa, backendning upload endpointi `question_number`ni qabul qilsin.)
+
+# 7) Baholash, saqlash va foydalanuvchini ogohlantirish
+
+* Teacher sahifada `Save draft` — local save (writing_score_x but not final), `Submit` — final review: sets `writing_status='checked'`, sets `writing_reviewer` va `writing_reviewed_at`, creates `ReviewLog` entries.
+* API endpoint `PATCH` orqali qabul qilingach, backend:
+
+  * saqlaydi ballni,
+  * hisoblangan overall exam result sifatida saqlashi kerak (agar total exam score dependent bo‘lsa),
+  * yuboradi notifikatsiya (telegram/email/push) — men tavsiya qilam: **Telegram** va sayt profilinga push via websocket or notification table.
+* Notifikatsiya text misol:
+
+  * `Salom <Ism>, sizning <Imtihon nomi> imtihoningiz uchun Writing bo‘limi tekshirildi. Ball: 85. Feedback: "..."` + link to profile.
+
+# 8) Xavfsizlik & ruxsat
+
+* Ushbu admin dashboard faqat `is_staff` yoki `group='exam_reviewers'` bo‘lgan foydalanuvchilarga ko‘rsatiladi.
+* API: token-based auth (e.g., JWT yoki DRF Token) + HTTPS.
+* Media URL’larini public qilmaslik: agar media sensitive bo‘lsa, foydalanish uchun short-lived signed URLs yoki restrict to authenticated users.
+* Audit log har bir o‘zgartirishni yozib boradi (kim, qachon, eski ball).
+
+# 9) Qo‘shimcha amaliy maslahatlar (tez inkişaf uchun)
+
+* Tez start: Django admin’ni customizatsiyalab boshlash — agar frontendni to‘liq React qilmoqchi bo‘lmasang, Django admin bo‘yicha custom ModelAdmin shaklida ham juda tez ishlaydi. Lekin React/modern UI ergonomikroq.
+* File storage: boshlanishda local storage ok, keyin S3/MinIO ga o‘tkazish oson.
+* Audio streaming: static file server orqali yetkazish etarli (Nginx).
+* Background tasks: notifikatsiyalar va media processing (agar kerak bo‘lsa) uchun Celery/RQ.
+
+# 10) Tez boshlash uchun konkret kod namunasi (Django DRF view: update writing)
+
+```python
+# exams/api.py (DRF view)
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAdminUser
+from rest_framework.response import Response
+from rest_framework import status
+from .models import Submission, ReviewLog
+from django.utils import timezone
+
+@api_view(['PATCH'])
+@permission_classes([IsAdminUser])
+def update_writing(request, submission_id):
+    """
+    payload:
+    {
+      "question_scores": {"1": {"score": 85, "comment": "..."}, "2": {...}},
+      "total_score": 87.5,
+      "notified": true
+    }
+    """
+    data = request.data
+    sub = Submission.objects.get(pk=submission_id)
+
+    old = sub.writing_score
+    sub.writing_score = data.get('total_score')
+    sub.writing_status = 'checked'
+    sub.writing_reviewer = request.user
+    sub.writing_reviewed_at = timezone.now()
+    sub.save()
+
+    # create logs per question
+    for qnum, qdata in data.get('question_scores', {}).items():
+        ReviewLog.objects.create(
+            submission=sub,
+            reviewer=request.user,
+            section='writing',
+            question_number=int(qnum),
+            old_score=None,  # optional: fetch previous per-question if stored
+            new_score=qdata.get('score'),
+            comment=qdata.get('comment','')
+        )
+
+    # notify user if requested
+    if data.get('notified', True):
+        # implement notification: send_telegram or send_email
+        pass
+
+    return Response({"detail":"ok"}, status=status.HTTP_200_OK)
+```
+
+# 11) Checklist — nimani hoziroq qilish kerak (prioritet)
+
+1. DB modelini qo‘shish / migrate (Submission, QuestionMedia, ReviewLog).
+2. Media upload endpoint (agar mavjud bo‘lmasa) — yoki mavjud uploadni kengaytirish, `question_number` required.
+3. Admin-only submissions list API.
+4. Submission detail API returns media grouped by `question_number`.
+5. Frontend page: SubmissionsList + SubmissionDetail minimal (image grid + audio tag + scoring panel).
+6. Save/Submit flow + notifications.
+7. Audit log va ruxsatlar tekshiruvi.
+8. Test: 1-2 sample submissions va real o‘qituvchilar bilan user acceptance test.
+
+# 12) Dizayn (UI) uslubi — qisqacha
+
+* Palitra: sayting bilan mos (to‘q ko‘k / och ko‘k), fon — oq, kartalar — yumaloq burchakli, yengil soyalar.
+* Typografiya: Clear headings (h3), small muted meta text (date, level).
+* Buttons: Primary (Save/Submit), secondary (Save draft), danger (Re-open).
+* Responsive: mobil ham ishlashi kerak (o‘qituvchilar mobil qurilmada ham baholashi mumkin).
+
+# 13) Keyingi qadamlar — men nima qilib berishim mumkin hozircha
+

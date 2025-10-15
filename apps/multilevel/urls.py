@@ -41,4 +41,7 @@ urlpatterns = [
 
     # Test time info
     path('test/time-info/', TestTimeInfoView.as_view(), name='test-time-info'),
+    
+    # Test SMS notification
+    path('test/sms-notification/', TestSMSNotificationView.as_view(), name='test-sms-notification'),
 ]

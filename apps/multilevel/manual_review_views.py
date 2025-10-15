@@ -2,6 +2,8 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAdminUser
+from rest_framework.authentication import TokenAuthentication
+from rest_framework.pagination import PageNumberPagination
 from django.utils import timezone
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
@@ -15,12 +17,24 @@ from .manual_review_serializers import (
     SubmissionDetailSerializer,
     WriteManualReviewSerializer
 )
+from .permissions import IsReviewerOrAdmin
+
+class SubmissionPagination(PageNumberPagination):
+    """
+    Custom pagination for submissions list
+    """
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 100
 
 class ManualReviewViewSet(viewsets.ViewSet):
     """
     API viewset for manual review of writing and speaking sections
+    Uses Token Authentication - no CSRF required
     """
-    permission_classes = [IsAdminUser]
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsReviewerOrAdmin]
+    pagination_class = SubmissionPagination
     
     def list(self, request):
         """
@@ -32,6 +46,11 @@ class ManualReviewViewSet(viewsets.ViewSet):
         - section: writing, speaking
         - exam_level: tys, multilevel
         - search: user's first/last name or username
+        
+        Important: Implements reviewer-based filtering:
+        - pending: visible to all reviewers (shared pool)
+        - reviewing: only visible to the reviewer who is reviewing it
+        - checked: only visible to the reviewer who checked it
         """
         # Get all test results for writing and speaking sections
         queryset = TestResult.objects.filter(
@@ -50,16 +69,31 @@ class ManualReviewViewSet(viewsets.ViewSet):
         search = request.query_params.get('search')
         
         if status_filter:
-            # Filter by review status
+            # Filter by review status WITH REVIEWER-BASED FILTERING
             if status_filter == 'pending':
-                # Items without manual_review or with pending status
+                # Items without manual_review or with pending status - visible to ALL reviewers
                 queryset = queryset.filter(
                     Q(manual_review__isnull=True) | Q(manual_review__status='pending')
                 )
             elif status_filter == 'reviewing':
-                queryset = queryset.filter(manual_review__status='reviewing')
+                # Only show items being reviewed by current user
+                queryset = queryset.filter(
+                    manual_review__status='reviewing',
+                    manual_review__reviewer=request.user
+                )
             elif status_filter == 'checked':
-                queryset = queryset.filter(manual_review__status='checked')
+                # Only show items checked by current user
+                queryset = queryset.filter(
+                    manual_review__status='checked',
+                    manual_review__reviewer=request.user
+                )
+        else:
+            # No status filter - show pending (shared) + current user's reviewing + current user's checked
+            queryset = queryset.filter(
+                Q(manual_review__isnull=True) | 
+                Q(manual_review__status='pending') |
+                Q(manual_review__reviewer=request.user)
+            )
         
         if section_filter:
             # Filter by section type
@@ -70,27 +104,67 @@ class ManualReviewViewSet(viewsets.ViewSet):
             queryset = queryset.filter(user_test__exam__level=exam_level)
         
         if search:
-            # Search by user's name or username
+            # Search by user's name or phone number
             queryset = queryset.filter(
                 Q(user_test__user__first_name__icontains=search) |
                 Q(user_test__user__last_name__icontains=search) |
-                Q(user_test__user__username__icontains=search)
+                Q(user_test__user__phone__icontains=search)
             )
         
-        serializer = SubmissionListSerializer(queryset, many=True, context={'request': request})
-        return Response(serializer.data)
+        # Apply pagination
+        paginator = self.pagination_class()
+        paginated_queryset = paginator.paginate_queryset(queryset, request)
+        serializer = SubmissionListSerializer(paginated_queryset, many=True, context={'request': request})
+        
+        return paginator.get_paginated_response(serializer.data)
     
     def retrieve(self, request, pk=None):
         """
         Get details for a specific submission
         GET /api/admin/submissions/{submission_id}/
+        
+        Important: Implements 10 submission limit per reviewer
+        - If reviewer already has 10+ "reviewing" submissions, prevent opening new ones
         """
+        import logging
+        logger = logging.getLogger(__name__)
+        
         test_result = get_object_or_404(
             TestResult.objects.select_related(
                 'user_test__user', 'user_test__exam', 'section'
             ),
             pk=pk
         )
+        
+        logger.info(f"Retrieving submission {pk}:")
+        logger.info(f"  - Section type: {test_result.section.type}")
+        logger.info(f"  - Section title: {test_result.section.title}")
+        
+        # Check if we need to mark this as reviewing (it's currently pending or new)
+        should_mark_as_reviewing = False
+        if hasattr(test_result, 'manual_review'):
+            if test_result.manual_review.status == 'pending':
+                should_mark_as_reviewing = True
+        else:
+            should_mark_as_reviewing = True
+        
+        # If we need to mark as reviewing, check the 10-submission limit
+        if should_mark_as_reviewing:
+            # Count current reviewer's "reviewing" submissions
+            reviewing_count = ManualReview.objects.filter(
+                reviewer=request.user,
+                status='reviewing'
+            ).count()
+            
+            logger.info(f"Reviewer {request.user.get_full_name()} has {reviewing_count} reviewing submissions")
+            
+            if reviewing_count >= 10:
+                # Reject - reviewer has too many pending reviews
+                return Response({
+                    'error': 'limit_reached',
+                    'message': 'Kechirasiz sizda 10 ta ko\'rib chiqilayotgan natijalar bor. Iltimos avval ularni baholab chiqing. Keyin yana yangi natijalar siz uchun ochiladi. Biror muammo bo\'lsa, darhol adminlarga xabar bering',
+                    'reviewing_count': reviewing_count
+                }, status=status.HTTP_403_FORBIDDEN)
         
         serializer = SubmissionDetailSerializer(
             test_result, 
@@ -101,6 +175,7 @@ class ManualReviewViewSet(viewsets.ViewSet):
         if hasattr(test_result, 'manual_review'):
             if test_result.manual_review.status == 'pending':
                 test_result.manual_review.status = 'reviewing'
+                test_result.manual_review.reviewer = request.user
                 test_result.manual_review.save()
         else:
             # Create manual review record if it doesn't exist yet
@@ -111,7 +186,10 @@ class ManualReviewViewSet(viewsets.ViewSet):
                 reviewer=request.user
             )
         
-        return Response(serializer.data)
+        response_data = serializer.data
+        logger.info(f"Returning response with section_type: {response_data.get('section_type')}")
+        
+        return Response(response_data)
     
     @action(detail=True, methods=['patch'], url_path='writing')
     def update_writing(self, request, pk=None):
@@ -119,6 +197,13 @@ class ManualReviewViewSet(viewsets.ViewSet):
         Update writing scores for a submission
         PATCH /api/admin/submissions/{submission_id}/writing/
         """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        logger.info(f"Writing update request for ID {pk}")
+        logger.info(f"Request data: {request.data}")
+        logger.info(f"Request user: {request.user}")
+        
         test_result = get_object_or_404(
             TestResult.objects.select_related(
                 'user_test__user', 'user_test__exam', 'section'
@@ -127,9 +212,14 @@ class ManualReviewViewSet(viewsets.ViewSet):
             section__type='writing'
         )
         
+        logger.info(f"Found test result: {test_result}")
+        
         serializer = WriteManualReviewSerializer(data=request.data)
         if not serializer.is_valid():
+            logger.error(f"Serializer validation errors: {serializer.errors}")
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        logger.info(f"Serializer validated data: {serializer.validated_data}")
         
         # Get or create manual review
         manual_review, created = ManualReview.objects.get_or_create(
@@ -144,9 +234,16 @@ class ManualReviewViewSet(viewsets.ViewSet):
         # Update manual review
         old_score = manual_review.total_score
         manual_review.total_score = serializer.validated_data['total_score']
-        manual_review.status = 'checked'
         manual_review.reviewer = request.user
-        manual_review.reviewed_at = timezone.now()
+        
+        # Set status based on is_draft parameter
+        is_draft = serializer.validated_data.get('is_draft', False)
+        if is_draft:
+            manual_review.status = 'reviewing'  # Keep as reviewing for drafts
+        else:
+            manual_review.status = 'checked'  # Mark as checked for final submission
+            manual_review.reviewed_at = timezone.now()
+            
         manual_review.save()
         
         # Create review log for total score change
@@ -249,9 +346,16 @@ class ManualReviewViewSet(viewsets.ViewSet):
         # Update manual review
         old_score = manual_review.total_score
         manual_review.total_score = serializer.validated_data['total_score']
-        manual_review.status = 'checked'
         manual_review.reviewer = request.user
-        manual_review.reviewed_at = timezone.now()
+        
+        # Set status based on is_draft parameter
+        is_draft = serializer.validated_data.get('is_draft', False)
+        if is_draft:
+            manual_review.status = 'reviewing'  # Keep as reviewing for drafts
+        else:
+            manual_review.status = 'checked'  # Mark as checked for final submission
+            manual_review.reviewed_at = timezone.now()
+            
         manual_review.save()
         
         # Create review log for total score change

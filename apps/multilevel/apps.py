@@ -6,4 +6,6 @@ class MultilevelConfig(AppConfig):
     name = 'apps.multilevel'
 
     def ready(self):
-        import apps.multilevel.models  
+        import apps.multilevel.models
+        import apps.multilevel.signals  # Register signals
+        import apps.multilevel.reviewer_admin  # Register reviewer admin  

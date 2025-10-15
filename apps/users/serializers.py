@@ -134,9 +134,12 @@ class UserUpdateSerializer(serializers.ModelSerializer):
         return value
 
     def validate_email(self, value):
-        if value and not re.match(r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$', value):
+        # Email bo'sh bo'lsa, validatsiya qilmaslik
+        if not value:
+            return value
+        if not re.match(r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$', value):
             raise serializers.ValidationError("Email formati noto'g'ri!")
-        if value and User.objects.filter(email=value).exclude(id=self.instance.id).exists():
+        if User.objects.filter(email=value).exclude(id=self.instance.id).exists():
             raise serializers.ValidationError("Bu email allaqachon ishlatilgan!")
         return value
 
@@ -175,6 +178,7 @@ class ChangeBalanceSerializer(serializers.ModelSerializer):
 class RegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True)
     confirm_password = serializers.CharField(write_only=True, required=True)
+    email = serializers.EmailField(required=False, allow_blank=True, allow_null=True)
 
     class Meta:
         model = User
@@ -188,9 +192,12 @@ class RegistrationSerializer(serializers.ModelSerializer):
         return value
 
     def validate_email(self, value):
-        if value and not re.match(r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$', value):
+        # Email bo'sh bo'lsa, validatsiya qilmaslik
+        if not value:
+            return value
+        if not re.match(r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$', value):
             raise serializers.ValidationError("Email formati noto'g'ri!")
-        if value and User.objects.filter(email=value).exists():
+        if User.objects.filter(email=value).exists():
             raise serializers.ValidationError("Bu email allaqachon ishlatilgan!")
         return value
 
@@ -203,9 +210,13 @@ class RegistrationSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         validated_data.pop('confirm_password')
+        # Email bo'sh bo'lsa, None yuborish
+        email = validated_data.get('email')
+        if not email:
+            email = None
         return User.objects.create_user(
             phone=validated_data.get('phone'),
-            email=validated_data.get('email'),
+            email=email,
             first_name=validated_data.get('first_name'),
             last_name=validated_data.get('last_name'),
             password=validated_data.get('password'),

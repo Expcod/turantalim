@@ -13,10 +13,10 @@ from apps.common.models import BaseModel
 
 # Choices
 SECTION_CHOICES = [
-    ("listening", "Listening"),
-    ("reading", "Reading"),
-    ("writing", "Writing"),
-    ("speaking", "Speaking"),
+    ("listening", "Tinglash"),
+    ("reading", "O'qish"),
+    ("writing", "Yozish"),
+    ("speaking", "Gapirish"),
 ]
 LEVEL_CHOICES = [
     ("a1", "A1"),
@@ -30,9 +30,9 @@ LEVEL_CHOICES = [
 
 # Manual review status choices
 REVIEW_STATUS_CHOICES = [
-    ('pending', 'Pending'),
-    ('reviewing', 'Reviewing'),
-    ('checked', 'Checked'),
+    ('pending', 'Kutilmoqda'),
+    ('reviewing', 'Tekshirilmoqda'),
+    ('checked', 'Tekshirilgan'),
 ]
 
 # Exam Model
@@ -226,10 +226,58 @@ class UserTest(BaseModel):
     )
     transaction_id = models.CharField(max_length=100, null=True, blank=True, verbose_name="Tranzaksiya ID")  # Payme uchun
     exam = models.ForeignKey(Exam, on_delete=models.CASCADE, verbose_name="Imtihon", null=False )
+    is_checked = models.BooleanField(
+        default=False,
+        verbose_name="Tekshirilgan",
+        help_text="Barcha sectionlar to'liq baholanganda True bo'ladi"
+    )
 
     def clean(self):
         if not self.exam:
             raise ValidationError("UserTest uchun Exam majburiy bo'lishi kerak!")
+
+    def are_all_sections_graded(self):
+        """
+        Barcha sectionlar to'liq baholangan yoki baholanishga hojati yo'qligini tekshirish
+        
+        Returns:
+            bool: True agar barcha sectionlar tekshirilgan bo'lsa
+        """
+        from .models import TestResult, ManualReview
+        
+        # Imtihonning barcha sectionlarini olish
+        exam_sections = self.exam.section_set.all()
+        
+        # Agar sectionlar yo'q bo'lsa, False qaytarish
+        if not exam_sections.exists():
+            return False
+        
+        # Har bir section uchun tekshirish
+        for section in exam_sections:
+            # Bu section uchun TestResult bormi?
+            test_result = TestResult.objects.filter(
+                user_test=self,
+                section=section,
+                status='completed'
+            ).first()
+            
+            # Agar TestResult yo'q yoki completed emas bo'lsa, hali tayyor emas
+            if not test_result:
+                return False
+            
+            # Agar bu writing yoki speaking bo'lsa, manual review tekshirilganligini ko'rish kerak
+            if section.type in ['writing', 'speaking']:
+                manual_review = ManualReview.objects.filter(
+                    test_result=test_result,
+                    section=section.type
+                ).first()
+                
+                # Manual review yo'q yoki hali checked emas bo'lsa, tayyor emas
+                if not manual_review or manual_review.status != 'checked':
+                    return False
+        
+        # Barcha sectionlar tekshirilgan
+        return True
 
     def __str__(self):
         return f"{self.user.get_full_name()} - {self.language}"
@@ -347,23 +395,24 @@ class SubmissionMedia(models.Model):
     Stores media (images or audio) for a specific submission question.
     Important: includes question_number to avoid mixing files between questions.
     """
-    test_result = models.ForeignKey(TestResult, on_delete=models.CASCADE, related_name='media')
-    section = models.CharField(max_length=20, choices=[('writing', 'Writing'), ('speaking', 'Speaking')])
-    question_number = models.PositiveSmallIntegerField()  # 1, 2, ...
-    file = models.FileField(upload_to='submissions/%Y/%m/%d/')
+    test_result = models.ForeignKey(TestResult, on_delete=models.CASCADE, related_name='media', verbose_name='Test natijasi')
+    section = models.CharField(max_length=20, choices=[('writing', 'Yozish'), ('speaking', 'Gapirish')], verbose_name='Bo\'lim')
+    question_number = models.PositiveSmallIntegerField(verbose_name='Savol raqami')  # 1, 2, ...
+    file = models.FileField(upload_to='submissions/%Y/%m/%d/', verbose_name='Fayl')
     file_type = models.CharField(
         max_length=10, 
-        choices=[('image', 'Image'), ('audio', 'Audio')],
-        default='image'
+        choices=[('image', 'Rasm'), ('audio', 'Audio')],
+        default='image',
+        verbose_name='Fayl turi'
     )
-    uploaded_at = models.DateTimeField(auto_now_add=True)
+    uploaded_at = models.DateTimeField(auto_now_add=True, verbose_name='Yuklangan vaqt')
 
     def __str__(self):
-        return f"{self.test_result.user_test.user.get_full_name()} - {self.section} Q{self.question_number}"
+        return f"{self.test_result.user_test.user.get_full_name()} - {self.section} Savol {self.question_number}"
 
     class Meta:
-        verbose_name = "Submission Media"
-        verbose_name_plural = "Submission Media"
+        verbose_name = "Topshiriq Fayli"
+        verbose_name_plural = "Topshiriq Fayllar"
         ordering = ['section', 'question_number', 'uploaded_at']
 
 
@@ -372,23 +421,26 @@ class ManualReview(models.Model):
     Stores manual review data for writing and speaking sections
     """
     test_result = models.OneToOneField(TestResult, on_delete=models.CASCADE, related_name='manual_review')
-    section = models.CharField(max_length=20, choices=[('writing', 'Writing'), ('speaking', 'Speaking')])
+    section = models.CharField(max_length=20, choices=[('writing', 'Yozish'), ('speaking', 'Gapirish')], verbose_name='Bo\'lim')
     status = models.CharField(
         max_length=20,
         choices=REVIEW_STATUS_CHOICES,
-        default='pending'
+        default='pending',
+        verbose_name='Holat'
     )
-    total_score = models.FloatField(null=True, blank=True)
+    total_score = models.FloatField(null=True, blank=True, verbose_name='Umumiy ball')
     reviewer = models.ForeignKey(
         settings.AUTH_USER_MODEL, 
         on_delete=models.SET_NULL, 
         null=True, 
         blank=True, 
-        related_name='reviews'
+        related_name='reviews',
+        verbose_name='Tekshiruvchi'
     )
-    reviewed_at = models.DateTimeField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True, verbose_name='Tekshirilgan vaqt')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Yaratilgan vaqt')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='Yangilangan vaqt')
+    telegram_message_id = models.BigIntegerField(null=True, blank=True, verbose_name='Telegram xabar ID')
     
     def save(self, *args, **kwargs):
         # Update test_result score when manual review is completed
@@ -403,11 +455,11 @@ class ManualReview(models.Model):
         super().save(*args, **kwargs)
     
     def __str__(self):
-        return f"{self.test_result.user_test.user.get_full_name()} - {self.section} Review"
+        return f"{self.test_result.user_test.user.get_full_name()} - {self.section} Tekshiruv"
 
     class Meta:
-        verbose_name = "Manual Review"
-        verbose_name_plural = "Manual Reviews"
+        verbose_name = "Qo'lda Tekshiruv"
+        verbose_name_plural = "Qo'lda Tekshiruvlar"
         ordering = ['-created_at']
         unique_together = ['test_result', 'section']
 
@@ -416,17 +468,17 @@ class QuestionScore(models.Model):
     """
     Stores individual question scores for manual review
     """
-    manual_review = models.ForeignKey(ManualReview, on_delete=models.CASCADE, related_name='question_scores')
-    question_number = models.PositiveSmallIntegerField()
-    score = models.FloatField()
-    comment = models.TextField(blank=True)
+    manual_review = models.ForeignKey(ManualReview, on_delete=models.CASCADE, related_name='question_scores', verbose_name='Qo\'lda tekshiruv')
+    question_number = models.PositiveSmallIntegerField(verbose_name='Savol raqami')
+    score = models.FloatField(verbose_name='Ball')
+    comment = models.TextField(blank=True, verbose_name='Izoh')
     
     def __str__(self):
-        return f"{self.manual_review.test_result.user_test.user.get_full_name()} - Q{self.question_number}"
+        return f"{self.manual_review.test_result.user_test.user.get_full_name()} - Savol {self.question_number}"
 
     class Meta:
-        verbose_name = "Question Score"
-        verbose_name_plural = "Question Scores"
+        verbose_name = "Savol Balli"
+        verbose_name_plural = "Savol Ballari"
         ordering = ['question_number']
         unique_together = ['manual_review', 'question_number']
 
@@ -435,19 +487,19 @@ class ReviewLog(models.Model):
     """
     Audit log for review actions
     """
-    manual_review = models.ForeignKey(ManualReview, on_delete=models.CASCADE, related_name='logs')
-    reviewer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
-    action = models.CharField(max_length=50)
-    question_number = models.PositiveSmallIntegerField(null=True, blank=True)
-    old_score = models.FloatField(null=True, blank=True)
-    new_score = models.FloatField(null=True, blank=True)
-    comment = models.TextField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    manual_review = models.ForeignKey(ManualReview, on_delete=models.CASCADE, related_name='logs', verbose_name='Qo\'lda tekshiruv')
+    reviewer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, verbose_name='Tekshiruvchi')
+    action = models.CharField(max_length=50, verbose_name='Harakat')
+    question_number = models.PositiveSmallIntegerField(null=True, blank=True, verbose_name='Savol raqami')
+    old_score = models.FloatField(null=True, blank=True, verbose_name='Eski ball')
+    new_score = models.FloatField(null=True, blank=True, verbose_name='Yangi ball')
+    comment = models.TextField(blank=True, verbose_name='Izoh')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Yaratilgan vaqt')
     
     def __str__(self):
         return f"{self.manual_review.test_result.user_test.user.get_full_name()} - {self.action}"
 
     class Meta:
-        verbose_name = "Review Log"
-        verbose_name_plural = "Review Logs"
+        verbose_name = "Tekshiruv Jurnal"
+        verbose_name_plural = "Tekshiruv Jurnallari"
         ordering = ['-created_at']

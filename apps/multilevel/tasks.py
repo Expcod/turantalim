@@ -538,3 +538,38 @@ def schedule_test_completion(test_result_id, duration_minutes):
     )
     
     logger.info(f"Test {test_result_id} uchun vaqt chegarasi rejalashtirildi: {eta}")
+
+# Stale manual reviews ni avtomatik pending ga qaytarish
+@shared_task
+def reset_stale_manual_reviews():
+    """
+    12 soatdan eski 'reviewing' statusdagi manual review larni 
+    'pending' statusga qaytaradi.
+    Bu task celery beat orqali har 30 daqiqada ishga tushiriladi.
+    """
+    from django.core.management import call_command
+    from io import StringIO
+    import logging
+    
+    logger = logging.getLogger(__name__)
+    
+    try:
+        # Management command ni ishga tushirish
+        output = StringIO()
+        call_command('reset_stale_reviews', stdout=output)
+        result = output.getvalue()
+        
+        logger.info(f"Stale reviews reset task completed: {result}")
+        
+        return {
+            "success": True,
+            "message": "Stale reviews reset task completed",
+            "output": result
+        }
+        
+    except Exception as e:
+        logger.error(f"Stale reviews reset task failed: {str(e)}")
+        return {
+            "success": False,
+            "message": f"Task failed: {str(e)}"
+        }

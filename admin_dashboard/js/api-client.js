@@ -75,7 +75,16 @@ class ApiClient {
         }
         
         try {
+            console.log('Making API request:', {
+                url: url,
+                method: fetchOptions.method || 'GET',
+                headers: fetchOptions.headers,
+                body: fetchOptions.body
+            });
+            
             const response = await fetch(url, fetchOptions);
+            
+            console.log('API response status:', response.status);
             
             if (!response.ok) {
                 if (response.status === 401) {
@@ -86,14 +95,26 @@ class ApiClient {
                 }
                 
                 const errorData = await response.json();
-                throw new Error(errorData.detail || 'API request failed');
+                console.error('API error response:', errorData);
+                
+                // If it's a 403 with limit_reached error, return special error object
+                if (response.status === 403 && errorData.error === 'limit_reached') {
+                    const error = new Error(errorData.message);
+                    error.code = 'limit_reached';
+                    error.data = errorData;
+                    throw error;
+                }
+                
+                throw new Error(errorData.detail || errorData.message || 'API request failed');
             }
             
             if (response.status === 204) {
                 return { success: true };
             }
             
-            return await response.json();
+            const result = await response.json();
+            console.log('API response data:', result);
+            return result;
         } catch (error) {
             console.error('API request error:', error);
             throw error;
@@ -129,21 +150,27 @@ class ApiClient {
      */
     logout() {
         this.clearToken();
-        window.location.href = '/admin_dashboard/login.html';
+        window.location.href = '/admin-dashboard/login.html';
     }
 
     /**
      * Get submissions list
      * @param {Object} filters - Filter parameters
-     * @returns {Promise} - Submissions list
+     * @param {number} page - Page number (default: 1)
+     * @param {number} pageSize - Items per page (default: 10)
+     * @returns {Promise} - Paginated submissions list
      */
-    async getSubmissions(filters = {}) {
+    async getSubmissions(filters = {}, page = 1, pageSize = 10) {
         const queryParams = new URLSearchParams();
         
         if (filters.status) queryParams.append('status', filters.status);
         if (filters.section) queryParams.append('section', filters.section);
         if (filters.exam_level) queryParams.append('exam_level', filters.exam_level);
         if (filters.search) queryParams.append('search', filters.search);
+        
+        // Add pagination parameters
+        queryParams.append('page', page);
+        queryParams.append('page_size', pageSize);
         
         const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
         
@@ -175,6 +202,11 @@ class ApiClient {
      * @returns {Promise} - Update response
      */
     async updateWritingScores(submissionId, data) {
+        console.log('API Client - updateWritingScores called with:', {
+            submissionId: submissionId,
+            data: data
+        });
+        
         return await this.request(`${submissionId}/writing/`, {
             method: 'PATCH',
             body: data
@@ -188,6 +220,11 @@ class ApiClient {
      * @returns {Promise} - Update response
      */
     async updateSpeakingScores(submissionId, data) {
+        console.log('API Client - updateSpeakingScores called with:', {
+            submissionId: submissionId,
+            data: data
+        });
+        
         return await this.request(`${submissionId}/speaking/`, {
             method: 'PATCH',
             body: data

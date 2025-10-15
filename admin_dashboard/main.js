@@ -54,6 +54,22 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
+// Uzbekistan timezone formatter helpers
+function formatTashkentDateTime(dateInput) {
+    const dt = typeof dateInput === 'string' || typeof dateInput === 'number' ? new Date(dateInput) : dateInput;
+    const formatter = new Intl.DateTimeFormat('uz-UZ', {
+        timeZone: 'Asia/Tashkent',
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+    return formatter.format(dt).replace(',', '');
+}
+
+function formatTashkentDate(dateInput) {
+    const dt = typeof dateInput === 'string' || typeof dateInput === 'number' ? new Date(dateInput) : dateInput;
+    return new Intl.DateTimeFormat('uz-UZ', { timeZone: 'Asia/Tashkent' }).format(dt);
+}
+
 // Check if current page is login page
 function isLoginPage() {
     return window.location.pathname.includes('login.html');
@@ -102,7 +118,7 @@ function loadSubmissions() {
     if (tableBody) {
         tableBody.innerHTML = `
             <tr>
-                <td colspan="8" class="text-center">
+                <td colspan="9" class="text-center">
                     <i class="fas fa-spinner fa-spin me-2"></i> Yuklanmoqda...
                 </td>
             </tr>
@@ -141,7 +157,7 @@ function loadSubmissions() {
             if (tableBody) {
                 tableBody.innerHTML = `
                     <tr>
-                        <td colspan="8" class="text-center text-danger">
+                        <td colspan="9" class="text-center text-danger">
                             Ma\'lumotlarni yuklashda xatolik yuz berdi.
                         </td>
                     </tr>
@@ -161,7 +177,7 @@ function renderSubmissionsTable(submissions) {
     if (!submissions || submissions.length === 0) {
         tableBody.innerHTML = `
             <tr>
-                <td colspan="8" class="text-center">
+                <td colspan="9" class="text-center">
                     Ma\'lumotlar topilmadi
                 </td>
             </tr>
@@ -176,25 +192,37 @@ function renderSubmissionsTable(submissions) {
         
         // Determine status badge class
         let statusClass = 'bg-warning text-dark'; // default for pending
-        let statusText = 'Pending';
+        let statusText = 'Kutilmoqda';
         
         if (submission.writing_status === 'reviewing' || submission.speaking_status === 'reviewing') {
             statusClass = 'bg-info';
-            statusText = 'Reviewing';
+            statusText = 'Ko\'rilmoqda';
         } else if (submission.writing_status === 'checked' && submission.speaking_status === 'checked') {
             statusClass = 'bg-success';
-            statusText = 'Checked';
+            statusText = 'Tekshirilgan';
         }
+        
+        // Translate sections to Uzbek
+        const translatedSections = submission.sections.map(section => {
+            switch(section) {
+                case 'writing': return 'Yozish';
+                case 'speaking': return 'Gapirish';
+                case 'listening': return 'Tinglash';
+                case 'reading': return 'O\'qish';
+                default: return section;
+            }
+        });
         
         // Create row
         const row = document.createElement('tr');
         row.innerHTML = `
             <td><input class="form-check-input" type="checkbox" value="${submission.id}"></td>
+            <td><strong>#${submission.test_result_id}</strong></td>
             <td><a href="submission.html?id=${submission.id}">${user.first_name} ${user.last_name}</a></td>
             <td><a href="submission.html?id=${submission.id}">${exam.title}</a></td>
             <td>${exam.level}</td>
-            <td>${new Date(submission.created_at).toLocaleDateString()}</td>
-            <td>${submission.sections.join(', ')}</td>
+            <td>${formatTashkentDate(submission.created_at)}</td>
+            <td>${translatedSections.join(', ')}</td>
             <td><span class="badge ${statusClass}">${statusText}</span></td>
             <td>
                 <a href="submission.html?id=${submission.id}" class="btn btn-sm btn-primary">
@@ -248,7 +276,7 @@ function renderSubmissionDetails(data) {
     document.querySelector('.alert-light').innerHTML = `
         <span class="fw-bold">Imtihon:</span> ${exam.title} | 
         <span class="fw-bold">Level:</span> ${exam.level} | 
-        <span class="fw-bold">Sana:</span> ${new Date(data.user_test.created_at).toLocaleDateString()}
+        <span class="fw-bold">Sana:</span> ${formatTashkentDate(data.user_test.created_at)}
     `;
     
     // Set listening section data
@@ -257,7 +285,7 @@ function renderSubmissionDetails(data) {
         document.getElementById('listening-content').innerHTML = `
             <div class="alert alert-info">
                 <i class="fas fa-info-circle me-2"></i>
-                Listening bo'limi dastur tomonidan avtomatik tekshirilgan.
+                Tinglash bo'limi dastur tomonidan avtomatik tekshirilgan.
             </div>
             <h5>Natija: <span class="badge bg-success">${listening.score} / 100</span></h5>
         `;
@@ -265,7 +293,7 @@ function renderSubmissionDetails(data) {
         document.getElementById('listening-content').innerHTML = `
             <div class="alert alert-warning">
                 <i class="fas fa-exclamation-triangle me-2"></i>
-                Listening bo'limi hali topshirilmagan.
+                Tinglash bo'limi hali topshirilmagan.
             </div>
         `;
     }
@@ -276,7 +304,7 @@ function renderSubmissionDetails(data) {
         document.getElementById('reading-content').innerHTML = `
             <div class="alert alert-info">
                 <i class="fas fa-info-circle me-2"></i>
-                Reading bo'limi dastur tomonidan avtomatik tekshirilgan.
+                O'qish bo'limi dastur tomonidan avtomatik tekshirilgan.
             </div>
             <h5>Natija: <span class="badge bg-success">${reading.score} / 100</span></h5>
         `;
@@ -284,7 +312,7 @@ function renderSubmissionDetails(data) {
         document.getElementById('reading-content').innerHTML = `
             <div class="alert alert-warning">
                 <i class="fas fa-exclamation-triangle me-2"></i>
-                Reading bo'limi hali topshirilmagan.
+                O'qish bo'limi hali topshirilmagan.
             </div>
         `;
     }
@@ -298,7 +326,7 @@ function renderSubmissionDetails(data) {
         document.getElementById('writing-content').innerHTML = `
             <div class="alert alert-${statusClass}">
                 <i class="fas fa-pencil-alt me-2"></i>
-                Writing bo'limi ${statusText}.
+                Yozish bo'limi ${statusText}.
                 ${writing.manual_review?.status === 'checked' ? `<span class="ms-2 fw-bold">Ball: ${writing.manual_review.total_score}/100</span>` : ''}
             </div>
             <div id="writing-questions-container"></div>
@@ -329,7 +357,7 @@ function renderSubmissionDetails(data) {
         document.getElementById('writing-content').innerHTML = `
             <div class="alert alert-warning">
                 <i class="fas fa-exclamation-triangle me-2"></i>
-                Writing bo'limi hali topshirilmagan.
+                Yozish bo'limi hali topshirilmagan.
             </div>
         `;
     }
@@ -343,7 +371,7 @@ function renderSubmissionDetails(data) {
         document.getElementById('speaking-content').innerHTML = `
             <div class="alert alert-${statusClass}">
                 <i class="fas fa-microphone me-2"></i>
-                Speaking bo'limi ${statusText}.
+                Gapirish bo'limi ${statusText}.
                 ${speaking.manual_review?.status === 'checked' ? `<span class="ms-2 fw-bold">Ball: ${speaking.manual_review.total_score}/100</span>` : ''}
             </div>
             <div id="speaking-questions-container"></div>
@@ -374,7 +402,7 @@ function renderSubmissionDetails(data) {
         document.getElementById('speaking-content').innerHTML = `
             <div class="alert alert-warning">
                 <i class="fas fa-exclamation-triangle me-2"></i>
-                Speaking bo'limi hali topshirilmagan.
+                Gapirish bo'limi hali topshirilmagan.
             </div>
         `;
     }
@@ -407,8 +435,8 @@ function renderSubmissionMedia(media) {
                 questionMedia.forEach(item => {
                     writingHtml += `
                         <div class="col-md-4 mb-3">
-                            <a href="${item.file_url}" data-lightbox="question${questionNumber}" data-title="Writing Sample ${questionNumber} (image_id: ${item.id})">
-                                <img src="${item.file_url}" class="img-fluid rounded" alt="Writing Sample">
+                            <a href="${item.file_url}" data-lightbox="question${questionNumber}" data-title="Yozish namunasi ${questionNumber} (image_id: ${item.id})">
+                                <img src="${item.file_url}" class="img-fluid rounded" alt="Yozish namunasi">
                                 <div class="image-id">image_id: ${item.id}</div>
                             </a>
                         </div>
@@ -621,7 +649,7 @@ function submitScores(type) {
             
             // Add to audit log
             const action = isFinal ? 'Tekshirildi' : 'Qoralama';
-            const section = activeSection === 'writing-content' ? 'Writing' : 'Speaking';
+            const section = activeSection === 'writing-content' ? 'Yozish' : 'Gapirish';
             const description = `${section} bo'limi ${isFinal ? 'tekshirildi' : 'qoralama saqlandi'}. Ball: ${formData.total_score}`;
             
             addAuditLogEntry(action, description);
@@ -665,10 +693,10 @@ function setupTabHandlers() {
                 sectionTitle.textContent = `${section} Bo'limi Baholash`;
                 
                 // Toggle appropriate grading form
-                if (section === 'Writing') {
+                if (section === 'Yozish') {
                     document.getElementById('writingGrading').style.display = 'block';
                     document.getElementById('speakingGrading').style.display = 'none';
-                } else if (section === 'Speaking') {
+                } else if (section === 'Gapirish') {
                     document.getElementById('writingGrading').style.display = 'none';
                     document.getElementById('speakingGrading').style.display = 'block';
                 } else {
@@ -783,10 +811,7 @@ function addAuditLogEntry(action, description) {
     const auditLog = document.querySelector('.list-group-flush');
     
     if (auditLog) {
-        const now = new Date();
-        const timeString = now.toLocaleDateString() + ' ' + 
-                           now.getHours().toString().padStart(2, '0') + ':' + 
-                           now.getMinutes().toString().padStart(2, '0');
+        const timeString = formatTashkentDateTime(new Date());
         
         const entry = document.createElement('div');
         entry.className = 'list-group-item';
@@ -805,9 +830,7 @@ function addAuditLogEntry(action, description) {
 // Add entry to audit log from data
 function addAuditLogEntryFromData(auditLog, log) {
     if (auditLog) {
-        const timeString = new Date(log.created_at).toLocaleDateString() + ' ' + 
-                           new Date(log.created_at).getHours().toString().padStart(2, '0') + ':' + 
-                           new Date(log.created_at).getMinutes().toString().padStart(2, '0');
+        const timeString = formatTashkentDateTime(log.created_at);
         
         // Map action to badge
         let actionText = 'Info';

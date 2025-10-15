@@ -22,7 +22,7 @@
                         <a class="nav-link active" href="index.html">Dashboard</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="#">Tekshirilgan</a>
+                        <a class="nav-link" href="index.html?status=checked">Tekshirilgan</a>
                     </li>
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
@@ -62,11 +62,11 @@
                             <div>
                                 <div class="form-check form-check-inline">
                                     <input class="form-check-input" type="checkbox" id="writingSection" value="writing" checked>
-                                    <label class="form-check-label" for="writingSection">Writing</label>
+                                    <label class="form-check-label" for="writingSection">Yozish</label>
                                 </div>
                                 <div class="form-check form-check-inline">
                                     <input class="form-check-input" type="checkbox" id="speakingSection" value="speaking" checked>
-                                    <label class="form-check-label" for="speakingSection">Speaking</label>
+                                    <label class="form-check-label" for="speakingSection">Gapirish</label>
                                 </div>
                             </div>
                         </div>
@@ -77,9 +77,9 @@
                         <div class="col-md-3 mb-2">
                             <label for="status" class="form-label">Status</label>
                             <select class="form-select" id="status">
-                                <option value="pending" selected>Pending</option>
-                                <option value="reviewing">Reviewing</option>
-                                <option value="checked">Checked</option>
+                                <option value="pending" selected>Kutilmoqda</option>
+                                <option value="reviewing">Ko'rilmoqda</option>
+                                <option value="checked">Tekshirilgan</option>
                                 <option value="">Barchasi</option>
                             </select>
                         </div>
@@ -107,6 +107,7 @@
                             <th width="30">
                                 <input class="form-check-input" type="checkbox" id="selectAll">
                             </th>
+                            <th>ID</th>
                             <th>Ism, Familiya</th>
                             <th>Imtihon nomi</th>
                             <th>Level</th>
@@ -118,7 +119,7 @@
                     </thead>
                     <tbody>
                         <tr>
-                            <td colspan="8" class="text-center">
+                            <td colspan="9" class="text-center">
                                 <i class="fas fa-spinner fa-spin me-2"></i> Yuklanmoqda...
                             </td>
                         </tr>
@@ -131,15 +132,18 @@
         <div class="d-flex justify-content-between align-items-center mt-4">
             <div>Ko'rsatilmoqda <span id="pagination-info">0-0 of 0</span></div>
             <nav>
-                <ul class="pagination">
-                    <li class="page-item disabled">
-                        <a class="page-link" href="#">Oldingi</a>
-                    </li>
-                    <li class="page-item active"><a class="page-link" href="#">1</a></li>
-                    <li class="page-item"><a class="page-link" href="#">2</a></li>
-                    <li class="page-item"><a class="page-link" href="#">3</a></li>
+                <ul class="pagination mb-0">
                     <li class="page-item">
-                        <a class="page-link" href="#">Keyingi</a>
+                        <a class="page-link" href="#" aria-label="Oldingi">
+                            <span aria-hidden="true">&laquo;</span>
+                            <span class="sr-only">Oldingi</span>
+                        </a>
+                    </li>
+                    <li class="page-item">
+                        <a class="page-link" href="#" aria-label="Keyingi">
+                            <span aria-hidden="true">&raquo;</span>
+                            <span class="sr-only">Keyingi</span>
+                        </a>
                     </li>
                 </ul>
             </nav>
@@ -147,7 +151,7 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="js/api-client.js"></script>
-    <script src="js/main.js"></script>
+    <script src="js/api-client.js?v=20251014"></script>
+    <script src="js/main.js?v=20251014"></script>
 </body>
 </html>

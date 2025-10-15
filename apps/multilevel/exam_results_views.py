@@ -86,11 +86,12 @@ class MultilevelTysExamResultView(APIView):
         ).select_related('section').order_by('section__type')
         
         # Section natijalarini tayyorlash
+        max_section_score = 25 if user_test.exam.level.lower() == 'tys' else 75
         section_results = {
-            'listening': {'section_name': 'Listening', 'score': 0, 'max_score': 75, 'status': 'not_started', 'completed_at': None},
-            'reading': {'section_name': 'Reading', 'score': 0, 'max_score': 75, 'status': 'not_started', 'completed_at': None},
-            'writing': {'section_name': 'Writing', 'score': 0, 'max_score': 75, 'status': 'not_started', 'completed_at': None},
-            'speaking': {'section_name': 'Speaking', 'score': 0, 'max_score': 75, 'status': 'not_started', 'completed_at': None},
+            'listening': {'section_name': 'Listening', 'score': 0, 'max_score': max_section_score, 'status': 'not_started', 'completed_at': None},
+            'reading': {'section_name': 'Reading', 'score': 0, 'max_score': max_section_score, 'status': 'not_started', 'completed_at': None},
+            'writing': {'section_name': 'Writing', 'score': 0, 'max_score': max_section_score, 'status': 'not_started', 'completed_at': None},
+            'speaking': {'section_name': 'Speaking', 'score': 0, 'max_score': max_section_score, 'status': 'not_started', 'completed_at': None},
         }
         
         total_score = 0
@@ -111,9 +112,14 @@ class MultilevelTysExamResultView(APIView):
                     completed_sections += 1
         
         # Umumiy natijani hisoblash
-        max_possible_score = 300  # 4 section * 75 ball
-        average_score = total_score / 4 if completed_sections == 4 else 0
-        level = get_level_from_score(average_score)
+        if user_test.exam.level.lower() == 'tys':
+            max_possible_score = 100  # 4 section * 25 ball
+            final_score = total_score if completed_sections == 4 else 0
+        else:
+            max_possible_score = 300  # 4 section * 75 ball
+            final_score = total_score / 4 if completed_sections == 4 else 0
+        
+        level = get_level_from_score(final_score, user_test.exam.level)
         
         # Daraja tavsifini aniqlash
         level_descriptions = {
@@ -146,7 +152,7 @@ class MultilevelTysExamResultView(APIView):
             'overall_result': {
                 'total_score': total_score,
                 'max_possible_score': max_possible_score,
-                'average_score': round(average_score, 2),
+                'final_score': round(final_score, 2),
                 'level': level,
                 'level_description': level_descriptions.get(level, 'Noma\'lum daraja'),
                 'completed_sections': completed_sections,
@@ -227,8 +233,12 @@ class MultilevelTysExamListResultView(APIView):
                     total_score += test_result.score
                     completed_sections += 1
             
-            average_score = total_score / 4 if completed_sections == 4 else 0
-            level = get_level_from_score(average_score)
+            if user_test.exam.level.lower() == 'tys':
+                final_score = total_score if completed_sections == 4 else 0
+            else:
+                final_score = total_score / 4 if completed_sections == 4 else 0
+            
+            level = get_level_from_score(final_score, user_test.exam.level)
             
             # Oxirgi tugatilgan section vaqtini topish
             last_completed = test_results.filter(status='completed').order_by('-end_time').first()
@@ -241,7 +251,7 @@ class MultilevelTysExamListResultView(APIView):
                 'language': user_test.exam.language.name if user_test.exam.language else 'Unknown',
                 'status': user_test.status,
                 'total_score': total_score,
-                'average_score': round(average_score, 2),
+                'final_score': round(final_score, 2),
                 'level': level,
                 'completed_sections': completed_sections,
                 'total_sections': 4,

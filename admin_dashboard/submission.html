@@ -56,15 +56,12 @@
                     <div class="card-body">
                         <div class="d-flex align-items-center mb-2">
                             <div class="avatar me-3 rounded-circle bg-primary text-white">
-                                DA
+                                <i class="fas fa-spinner fa-spin"></i>
                             </div>
                             <div class="user-info">
                                 <h5 class="mb-0">Yuklanmoqda...</h5>
                                 <div class="text-muted">Yuklanmoqda...</div>
                             </div>
-                            <a href="#" class="btn btn-sm btn-outline-primary ms-auto">
-                                <i class="fas fa-user"></i> Profil
-                            </a>
                         </div>
                         <div class="alert alert-light mb-0 py-2">
                             <span class="fw-bold">Imtihon:</span> Yuklanmoqda... | 
@@ -74,64 +71,27 @@
                     </div>
                 </div>
 
-                <!-- Sections Tabs -->
+                <!-- Section Content (Yozish yoki Gapirish) -->
                 <div class="card shadow-sm">
-                    <div class="card-header bg-white">
-                        <ul class="nav nav-tabs card-header-tabs" id="sectionTabs" role="tablist">
-                            <li class="nav-item" role="presentation">
-                                <button class="nav-link" id="listening-tab" data-bs-toggle="tab" data-bs-target="#listening-content" type="button" role="tab">
-                                    Listening
-                                </button>
-                            </li>
-                            <li class="nav-item" role="presentation">
-                                <button class="nav-link" id="reading-tab" data-bs-toggle="tab" data-bs-target="#reading-content" type="button" role="tab">
-                                    Reading
-                                </button>
-                            </li>
-                            <li class="nav-item" role="presentation">
-                                <button class="nav-link active" id="writing-tab" data-bs-toggle="tab" data-bs-target="#writing-content" type="button" role="tab">
-                                    Writing
-                                </button>
-                            </li>
-                            <li class="nav-item" role="presentation">
-                                <button class="nav-link" id="speaking-tab" data-bs-toggle="tab" data-bs-target="#speaking-content" type="button" role="tab">
-                                    Speaking
-                                </button>
-                            </li>
-                        </ul>
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0" id="sectionHeader">
+                            <i class="fas fa-spinner fa-spin me-2"></i> Yuklanmoqda...
+                        </h5>
                     </div>
                     <div class="card-body">
-                        <div class="tab-content" id="sectionTabsContent">
-                            <!-- Listening Tab Content -->
-                            <div class="tab-pane fade" id="listening-content" role="tabpanel">
-                                <div class="text-center py-5">
-                                    <i class="fas fa-spinner fa-spin fa-2x mb-3"></i>
-                                    <p>Ma'lumotlar yuklanmoqda...</p>
-                                </div>
+                        <!-- Yozish Section Content -->
+                        <div id="writing-content" style="display: none;">
+                            <div class="text-center py-5">
+                                <i class="fas fa-spinner fa-spin fa-2x mb-3"></i>
+                                <p>Ma'lumotlar yuklanmoqda...</p>
                             </div>
-
-                            <!-- Reading Tab Content -->
-                            <div class="tab-pane fade" id="reading-content" role="tabpanel">
-                                <div class="text-center py-5">
-                                    <i class="fas fa-spinner fa-spin fa-2x mb-3"></i>
-                                    <p>Ma'lumotlar yuklanmoqda...</p>
-                                </div>
-                            </div>
-
-                            <!-- Writing Tab Content -->
-                            <div class="tab-pane fade show active" id="writing-content" role="tabpanel">
-                                <div class="text-center py-5">
-                                    <i class="fas fa-spinner fa-spin fa-2x mb-3"></i>
-                                    <p>Ma'lumotlar yuklanmoqda...</p>
-                                </div>
-                            </div>
-
-                            <!-- Speaking Tab Content -->
-                            <div class="tab-pane fade" id="speaking-content" role="tabpanel">
-                                <div class="text-center py-5">
-                                    <i class="fas fa-spinner fa-spin fa-2x mb-3"></i>
-                                    <p>Ma'lumotlar yuklanmoqda...</p>
-                                </div>
+                        </div>
+                        
+                        <!-- Gapirish Section Content -->
+                        <div id="speaking-content" style="display: none;">
+                            <div class="text-center py-5">
+                                <i class="fas fa-spinner fa-spin fa-2x mb-3"></i>
+                                <p>Ma'lumotlar yuklanmoqda...</p>
                             </div>
                         </div>
                     </div>
@@ -143,16 +103,16 @@
                 <div class="sticky-top pt-3">
                     <div class="card shadow-sm mb-4">
                         <div class="card-header bg-primary text-white">
-                            <h5 class="mb-0" id="sectionTitle">Writing Bo'limi Baholash</h5>
+                            <h5 class="mb-0" id="sectionTitle">Baholash</h5>
                         </div>
                         <div class="card-body">
                             <form id="gradingForm">
-                                <!-- Writing section grading (default) -->
-                                <div id="writingGrading">
+                                <!-- Yozish section grading -->
+                                <div id="writingGrading" style="display: none;">
                                     <div class="mb-3">
-                                        <label class="form-label fw-bold">Savol 1 Baho</label>
-                                        <input type="number" class="form-control" name="question1_score" min="0" max="100" required>
-                                        <div class="form-text">0-100 oralig'ida ball kiriting</div>
+                                        <label class="form-label fw-bold">Task 1 (Letter) - 33%</label>
+                                        <input type="number" class="form-control" name="question1_score" min="0" max="24.75" step="0.01" required>
+                                        <div class="form-text">0-24.75 oralig'ida ball kiriting</div>
                                     </div>
                                     <div class="mb-3">
                                         <label class="form-label">Izoh (ixtiyoriy)</label>
@@ -162,9 +122,9 @@
                                     <hr>
                                     
                                     <div class="mb-3">
-                                        <label class="form-label fw-bold">Savol 2 Baho</label>
-                                        <input type="number" class="form-control" name="question2_score" min="0" max="100" required>
-                                        <div class="form-text">0-100 oralig'ida ball kiriting</div>
+                                        <label class="form-label fw-bold">Task 2 (Essay) - 67%</label>
+                                        <input type="number" class="form-control" name="question2_score" min="0" max="50.25" step="0.01" required>
+                                        <div class="form-text">0-50.25 oralig'ida ball kiriting</div>
                                     </div>
                                     <div class="mb-3">
                                         <label class="form-label">Izoh (ixtiyoriy)</label>
@@ -172,28 +132,16 @@
                                     </div>
                                 </div>
                                 
-                                <!-- Speaking section grading (hidden initially) -->
+                                <!-- Gapirish section grading -->
                                 <div id="speakingGrading" style="display: none;">
                                     <div class="mb-3">
-                                        <label class="form-label fw-bold">Savol 1 Baho</label>
-                                        <input type="number" class="form-control" name="speaking_question1_score" min="0" max="100">
-                                        <div class="form-text">0-100 oralig'ida ball kiriting</div>
+                                        <label class="form-label fw-bold">Gapirish Ball (Umumiy)</label>
+                                        <input type="number" class="form-control" name="speaking_question1_score" min="0" max="75" step="0.01" required>
+                                        <div class="form-text">0-75 oralig'ida ball kiriting</div>
                                     </div>
                                     <div class="mb-3">
                                         <label class="form-label">Izoh (ixtiyoriy)</label>
                                         <textarea class="form-control" name="speaking_question1_comment" rows="2"></textarea>
-                                    </div>
-                                    
-                                    <hr>
-                                    
-                                    <div class="mb-3">
-                                        <label class="form-label fw-bold">Savol 2 Baho</label>
-                                        <input type="number" class="form-control" name="speaking_question2_score" min="0" max="100">
-                                        <div class="form-text">0-100 oralig'ida ball kiriting</div>
-                                    </div>
-                                    <div class="mb-3">
-                                        <label class="form-label">Izoh (ixtiyoriy)</label>
-                                        <textarea class="form-control" name="speaking_question2_comment" rows="2"></textarea>
                                     </div>
                                 </div>
                                 
@@ -201,53 +149,16 @@
                                 
                                 <div class="mb-3">
                                     <label class="form-label fw-bold">Umumiy Ball</label>
-                                    <input type="number" class="form-control" name="total_score" min="0" max="100" required>
-                                    <div class="form-text">Ikkala savol uchun o'rtacha ball</div>
-                                </div>
-                                
-                                <div class="mb-3 form-check">
-                                    <input type="checkbox" class="form-check-input" name="notify_student" id="notifyStudent" checked>
-                                    <label class="form-check-label" for="notifyStudent">Foydalanuvchiga xabar berish</label>
+                                    <input type="number" class="form-control" id="totalScoreInput" name="total_score" min="0" max="75" step="0.01" readonly required>
+                                    <div class="form-text" id="totalScoreHelp">Avtomatik hisoblanadi</div>
                                 </div>
                                 
                                 <div class="d-grid gap-2">
-                                    <button type="button" class="btn btn-outline-secondary" id="saveDraftBtn">
-                                        <i class="fas fa-save me-1"></i> Qoralama saqlash
-                                    </button>
                                     <button type="submit" class="btn btn-primary" id="submitBtn">
-                                        <i class="fas fa-check-circle me-1"></i> Topshirish
+                                        <i class="fas fa-check-circle me-1"></i> Baholashni yakunlash
                                     </button>
                                 </div>
                             </form>
-                        </div>
-                    </div>
-
-                    <!-- Reviewer Info -->
-                    <div class="card shadow-sm mb-4">
-                        <div class="card-body">
-                            <h6 class="text-muted mb-2">Tekshiruvchi</h6>
-                            <div class="d-flex align-items-center">
-                                <div class="avatar-sm me-2 bg-primary text-white rounded">AU</div>
-                                <div>Admin User</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Audit Log -->
-                    <div class="card shadow-sm">
-                        <div class="card-header bg-light">
-                            <h6 class="mb-0">Audit Log</h6>
-                        </div>
-                        <div class="card-body p-0">
-                            <div class="list-group list-group-flush audit-log">
-                                <div class="list-group-item">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <small class="text-muted">Loading...</small>
-                                        <span class="badge bg-info">Loading...</span>
-                                    </div>
-                                    <div>Loading audit log...</div>
-                                </div>
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -257,7 +168,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lightbox2/2.11.3/js/lightbox.min.js"></script>
-    <script src="js/api-client.js"></script>
-    <script src="js/main.js"></script>
+    <script src="js/api-client.js?v=20251014"></script>
+    <script src="js/main.js?v=20251014"></script>
 </body>
 </html>

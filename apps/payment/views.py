@@ -9,11 +9,15 @@ from apps.payment.models import ExamPayment, UserBalance, BalanceTransaction
 from apps.multilevel.models import Exam
 from .serializers import PaymentSerializer, BalanceTopUpSerializer, BalanceSerializer, BalanceTransactionSerializer, PaymeTransactionSerializer
 from core.settings import base
+from apps.utils.telegram import telegram_service
 import requests
+import logging
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
+
+logger = logging.getLogger(__name__)
 
 
 # pylint: disable=E1101
@@ -64,17 +68,6 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
         result.add_item(item)
         return result.as_resp()
 
-    TELEGRAM_BOT_TOKEN = base.TELEGRAM_BOT_TOKEN
-    TELEGRAM_CHAT_ID = base.TELEGRAM_CHAT_ID
-
-    def send_telegram_message(self, text):
-        """Telegram guruhga xabar yuborish funksiyasi"""
-        url = f"https://api.telegram.org/bot{self.TELEGRAM_BOT_TOKEN}/sendMessage"
-        payload = {"chat_id": self.TELEGRAM_CHAT_ID, "text": text}
-        response = requests.post(url, json=payload)
-        if response.status_code != 200:
-            print(f"Telegram xabar yuborishda xato: {response.text}")
-
     def handle_successfully_payment(self, params, result, *args, **kwargs):
         transaction = PaymeTransactions.get_by_transaction_id(
             transaction_id=params["id"]
@@ -91,16 +84,21 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
             user_balance.balance += balance_topup.amount
             user_balance.save()
 
-            # Send Telegram notification
-            message = (
-                f"✅ Balans To'ldirildi!\n"
-                f"👤 Foydalanuvchi: {balance_topup.user.first_name} {balance_topup.user.last_name}\n"
-                f"💰 Miqdor: {balance_topup.amount} UZS\n"
-                f"💳 Joriy Balans: {user_balance.balance} UZS\n"
-                f"💳 To'lov usuli: Payme\n"
-                f"📅 To'lov sanasi: {balance_topup.created_at.strftime('%d.%m.%Y')}"
+            logger.info(f"Balance top-up successful for user {balance_topup.user.username}: {balance_topup.amount} UZS")
+
+            # Send Telegram notification using utility
+            user_name = f"{balance_topup.user.first_name} {balance_topup.user.last_name}"
+            success = telegram_service.send_payment_notification(
+                user_name=user_name,
+                amount=balance_topup.amount,
+                payment_type="Balans To'ldirish",
+                current_balance=user_balance.balance,
+                payment_method="Payme",
+                date=balance_topup.created_at.strftime('%d.%m.%Y')
             )
-            self.send_telegram_message(message)
+            
+            if not success:
+                logger.warning(f"Failed to send Telegram notification for balance top-up: {balance_topup.id}")
 
         except BalanceTransaction.DoesNotExist:
             # If not found, try ExamPayment
@@ -109,17 +107,21 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
                 exam_payment.is_paid = True
                 exam_payment.save()
 
-                            # Send Telegram notification
-            # message = (
-            #     f"✅ To'lov tasdiqlandi!\n"
-            #     f"👤 Foydalanuvchi: {exam_payment.user.first_name} {exam_payment.user.last_name}\n"
-            #     f"📖 Imtihon: {exam_payment.exam.title}\n"
-            #     f"💰 To'lov summasi: {exam_payment.amount} UZS\n"
-            #     f"💳 To'lov usuli: Payme\n"
-            #     f"📅 To'lov sanasi: {exam_payment.created_at.strftime('%d.%m.%Y')}"
-            # )
-            # self.send_telegram_message(message)
+                logger.info(f"Exam payment successful for user {exam_payment.user.username}: {exam_payment.amount} UZS")
+
+                # Send Telegram notification (optional - currently disabled)
+                # Uncomment below to enable exam payment notifications
+                # user_name = f"{exam_payment.user.first_name} {exam_payment.user.last_name}"
+                # telegram_service.send_payment_notification(
+                #     user_name=user_name,
+                #     amount=exam_payment.amount,
+                #     payment_type=f"Imtihon To'lovi - {exam_payment.exam.title}",
+                #     payment_method="Payme",
+                #     date=exam_payment.created_at.strftime('%d.%m.%Y')
+                # )
+
             except ExamPayment.DoesNotExist:
+                logger.error(f"Account not found for transaction: {transaction.account_id}")
                 raise ValueError("Account not found")
 
     def handle_cancelled_payment(self, params, result, *args, **kwargs):
@@ -135,11 +137,16 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
                 order = ExamPayment.objects.get(id=transaction.account_id)
                 order.is_paid = False
                 order.save()
+                logger.info(f"Exam payment cancelled: {order.id}")
             except ExamPayment.DoesNotExist:
-                # BalanceTransaction bo'lsa
-                balance_topup = BalanceTransaction.objects.get(id=transaction.account_id)
-                balance_topup.description = "To'lov bekor qilindi"
-                balance_topup.save()
+                try:
+                    # BalanceTransaction bo'lsa
+                    balance_topup = BalanceTransaction.objects.get(id=transaction.account_id)
+                    balance_topup.description = "To'lov bekor qilindi"
+                    balance_topup.save()
+                    logger.info(f"Balance top-up cancelled: {balance_topup.id}")
+                except BalanceTransaction.DoesNotExist:
+                    logger.warning(f"Transaction account not found: {transaction.account_id}")
 
     def fetch_account(self, params):
         """
@@ -196,17 +203,6 @@ class ExamPaymentAPIView(views.APIView):
     permission_classes = [IsAuthenticated]
     serializer_class = PaymentSerializer
 
-    TELEGRAM_BOT_TOKEN = base.TELEGRAM_BOT_TOKEN
-    TELEGRAM_CHAT_ID = base.TELEGRAM_CHAT_ID
-
-    # def send_telegram_message(self, text):
-        # """Telegram guruhga xabar yuborish funksiyasi"""
-        # url = f"https://api.telegram.org/bot{self.TELEGRAM_BOT_TOKEN}/sendMessage"
-        # payload = {"chat_id": self.TELEGRAM_CHAT_ID, "text": text}
-        # response = requests.post(url, json=payload)
-        # if response.status_code != 200:
-        #     print(f"Telegram xabar yuborishda xato: {response.text}")
-
     def post(self, request):
         """
         Create a new order for Exam payment using balance.
@@ -229,7 +225,7 @@ class ExamPaymentAPIView(views.APIView):
         user_balance.save()
 
         # Tranzaksiyani yozish
-        BalanceTransaction.objects.create(
+        transaction = BalanceTransaction.objects.create(
             user=request.user,
             amount=amount,
             transaction_type="deduct",
@@ -243,16 +239,19 @@ class ExamPaymentAPIView(views.APIView):
         serializer.validated_data["payment_method"] = "balance"
         serializer.save()
 
-        # Telegram xabar yuborish
-        # message = (
-        #     f"✅ Imtihon To'lovi!\n"
-        #     f"👤 Foydalanuvchi: {request.user.first_name} {request.user.last_name}\n"
-        #     f"📖 Imtihon: {exam.title}\n"
-        #     f"💰 To'lov summasi: {amount} UZS\n"
-        #     f"💳 Qolgan balans: {user_balance.balance} UZS\n"
-        #     f"📅 To'lov sanasi: {serializer.instance.created_at.strftime('%d.%m.%Y')}"
+        logger.info(f"Exam payment via balance successful for user {request.user.username}: {amount} UZS for exam {exam.title}")
+
+        # Telegram xabar yuborish (optional - currently disabled)
+        # Uncomment below to enable exam payment from balance notifications
+        # user_name = f"{request.user.first_name} {request.user.last_name}"
+        # telegram_service.send_payment_notification(
+        #     user_name=user_name,
+        #     amount=amount,
+        #     payment_type=f"Imtihon To'lovi - {exam.title}",
+        #     current_balance=user_balance.balance,
+        #     payment_method="Balans",
+        #     date=serializer.instance.created_at.strftime('%d.%m.%Y')
         # )
-        # self.send_telegram_message(message)
 
         return Response({
             "order": serializer.data,

@@ -199,9 +199,9 @@ class ListeningTestCheckApiView(APIView):
             # Get exam level for scoring validation
             exam_level = test_result.user_test.exam.level
             
-            # Use multilevel scoring system for supported levels
+            # Use multilevel or TYS scoring system for supported levels
             if validate_test_level(exam_level):
-                score_details = get_score_details('listening', correct_count, total_questions)
+                score_details = get_score_details('listening', correct_count, total_questions, exam_level)
                 score = score_details['score']
                 level = score_details['level']
             else:
@@ -226,7 +226,15 @@ class ListeningTestCheckApiView(APIView):
                 if completed_sections >= total_sections:
                     # Barcha section'lar tugatilgan, UserTest ni yakunlash
                     total_score = sum(tr.score for tr in all_test_results)
-                    user_test.score = round(total_score / total_sections)  # O'rtacha score
+                    
+                    # Calculate final score based on exam type
+                    if exam_level.lower() == 'tys':
+                        # TYS: total score is the sum of all sections (max 100)
+                        user_test.score = round(total_score, 2)
+                    else:
+                        # Multilevel: average score of all sections (max 75)
+                        user_test.score = round(total_score / total_sections, 2)
+                    
                     user_test.status = 'completed'
                     user_test.save()
                 else:
@@ -263,9 +271,9 @@ class ListeningTestCheckApiView(APIView):
             # Get exam level for scoring validation
             exam_level = test_result.user_test.exam.level
             
-            # Use multilevel scoring system for supported levels
+            # Use multilevel or TYS scoring system for supported levels
             if validate_test_level(exam_level):
-                score_details = get_score_details('listening', correct_count, total_questions)
+                score_details = get_score_details('listening', correct_count, total_questions, exam_level)
                 score = score_details['score']
                 level = score_details['level']
             else:
@@ -291,7 +299,15 @@ class ListeningTestCheckApiView(APIView):
                 if completed_sections >= total_sections:
                     # Barcha section'lar tugatilgan, UserTest ni yakunlash
                     total_score = sum(tr.score for tr in all_test_results)
-                    user_test.score = round(total_score / total_sections)  # O'rtacha score
+                    
+                    # Calculate final score based on exam type
+                    if exam_level.lower() == 'tys':
+                        # TYS: total score is the sum of all sections (max 100)
+                        user_test.score = round(total_score, 2)
+                    else:
+                        # Multilevel: average score of all sections (max 75)
+                        user_test.score = round(total_score / total_sections, 2)
+                    
                     user_test.status = 'completed'
                     user_test.save()
                 else:

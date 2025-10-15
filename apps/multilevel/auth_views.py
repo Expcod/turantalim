@@ -8,14 +8,19 @@ from rest_framework.authtoken.models import Token
 from rest_framework.permissions import AllowAny
 from django.contrib.auth import authenticate
 from django.conf import settings
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class AdminLoginView(APIView):
     """
     Admin login endpoint for dashboard
     Accepts phone/username and password, returns DRF Token
+    CSRF exempt because this is a token-based auth endpoint
     """
     permission_classes = [AllowAny]
+    authentication_classes = []  # No authentication required for login
     
     def post(self, request):
         username = request.data.get('username')
@@ -55,9 +60,11 @@ class AdminLoginView(APIView):
                 pass
         
         if user is not None:
-            # Check if user is staff/admin
-            if not user.is_staff:
-                print(f"[DEBUG] User is not staff!")
+            # Check if user is staff/admin OR in Reviewer group
+            is_reviewer = user.groups.filter(name='Reviewer').exists()
+            
+            if not user.is_staff and not user.is_superuser and not is_reviewer:
+                print(f"[DEBUG] User is not staff or reviewer!")
                 return Response(
                     {'error': 'Sizda admin panelga kirish huquqi yo\'q'},
                     status=status.HTTP_403_FORBIDDEN
@@ -76,6 +83,7 @@ class AdminLoginView(APIView):
                     'first_name': user.first_name,
                     'last_name': user.last_name,
                     'is_staff': user.is_staff,
+                    'is_reviewer': is_reviewer,
                 }
             }, status=status.HTTP_200_OK)
         else:

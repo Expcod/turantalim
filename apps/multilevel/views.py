@@ -603,3 +603,64 @@ class TestTimeInfoView(APIView):
             "is_expired": False,
             "status": test_result.status
         }, status=status.HTTP_200_OK)
+
+
+class TestSMSNotificationView(APIView):
+    """
+    Test SMS notification endpoint for development/testing purposes
+    """
+    permission_classes = [IsAuthenticated]
+    
+    @swagger_auto_schema(
+        operation_summary="Test SMS notification",
+        operation_description="Test the SMS notification functionality",
+        manual_parameters=[
+            openapi.Parameter(
+                'phone_number',
+                in_=openapi.IN_QUERY,
+                description="Phone number to send test SMS to",
+                type=openapi.TYPE_STRING,
+                required=True
+            )
+        ],
+        responses={
+            200: openapi.Response(description="SMS sent successfully"),
+            400: openapi.Response(description="Bad request"),
+            500: openapi.Response(description="Server error")
+        }
+    )
+    def get(self, request):
+        """
+        Test SMS notification functionality
+        """
+        phone_number = request.query_params.get('phone_number')
+        
+        if not phone_number:
+            return Response({
+                'success': False,
+                'error': 'phone_number parameter is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            from .utils import test_sms_notification
+            success = test_sms_notification(phone_number)
+            
+            if success:
+                return Response({
+                    'success': True,
+                    'message': f'Test SMS sent successfully to {phone_number}',
+                    'phone_number': phone_number
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({
+                    'success': False,
+                    'error': 'Failed to send SMS',
+                    'phone_number': phone_number
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': f'Error sending test SMS: {str(e)}',
+                'phone_number': phone_number
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -2,12 +2,16 @@ from django.contrib import admin
 from django import forms
 from django.db import models
 from django.core.exceptions import ValidationError
+from django.contrib.auth.models import Group
 
 # Import all models from models.py
 from apps.multilevel.models import (
     Exam, Section, Test, Question, Option, UserTest, TestResult, TestImage, QuestionImage,
     SubmissionMedia, ManualReview, QuestionScore, ReviewLog, REVIEW_STATUS_CHOICES
 )
+
+# Import User model and check if we need to register reviewer admin
+from apps.users.models import User
 
 # Option Inline Formset
 class OptionInlineFormset(forms.BaseInlineFormSet):
@@ -91,11 +95,11 @@ class TestAdmin(admin.ModelAdmin):
     
     def section_info(self, obj):
         return f"{obj.section.title} ({obj.section.get_type_display()})"
-    section_info.short_description = 'Section'
+    section_info.short_description = 'Bo\'lim'
     
     def level_info(self, obj):
         return obj.section.exam.get_level_display()
-    level_info.short_description = 'Level'
+    level_info.short_description = 'Daraja'
 
     def get_queryset(self, request):
         return super().get_queryset(request).select_related('section__exam')
@@ -109,7 +113,7 @@ class SectionAdmin(admin.ModelAdmin):
     
     def exam_info(self, obj):
         return f"{obj.exam.title} ({obj.exam.get_level_display()})"
-    exam_info.short_description = 'Exam'
+    exam_info.short_description = 'Imtihon'
     
     def get_queryset(self, request):
         return super().get_queryset(request).select_related('exam')
@@ -132,15 +136,15 @@ class TestResultAdmin(admin.ModelAdmin):
     
     def user_name(self, obj):
         return obj.user_test.user.get_full_name()
-    user_name.short_description = 'User'
+    user_name.short_description = 'Foydalanuvchi'
     
     def section_info(self, obj):
         return f"{obj.section.title} ({obj.section.get_type_display()})"
-    section_info.short_description = 'Section'
+    section_info.short_description = 'Bo\'lim'
     
     def exam_info(self, obj):
         return f"{obj.user_test.exam.title} ({obj.user_test.exam.get_level_display()})"
-    exam_info.short_description = 'Exam'
+    exam_info.short_description = 'Imtihon'
     
     def get_queryset(self, request):
         return super().get_queryset(request).select_related(
@@ -157,11 +161,11 @@ class UserTestAdmin(admin.ModelAdmin):
     
     def user_name(self, obj):
         return obj.user.get_full_name()
-    user_name.short_description = 'User'
+    user_name.short_description = 'Foydalanuvchi'
     
     def exam_info(self, obj):
         return f"{obj.exam.title} ({obj.exam.get_level_display()})"
-    exam_info.short_description = 'Exam'
+    exam_info.short_description = 'Imtihon'
     
     def get_queryset(self, request):
         return super().get_queryset(request).select_related('user', 'exam')
@@ -180,25 +184,44 @@ class ReviewLogInline(admin.TabularInline):
 # ManualReview Admin
 @admin.register(ManualReview)
 class ManualReviewAdmin(admin.ModelAdmin):
-    list_display = ['id', 'user_name', 'section', 'exam_info', 'status', 'total_score', 'reviewer_name', 'created_at']
-    list_filter = ['status', 'section', 'test_result__user_test__exam__level']
-    search_fields = ['test_result__user_test__user__first_name', 'test_result__user_test__user__last_name']
-    readonly_fields = ['created_at', 'updated_at']
+    list_display = ['id', 'user_name', 'section', 'exam_info', 'status', 'total_score', 'reviewer_link', 'reviewed_at', 'created_at']
+    list_filter = ['status', 'section', 'test_result__user_test__exam__level', 'reviewer']
+    search_fields = [
+        'test_result__user_test__user__first_name', 
+        'test_result__user_test__user__last_name',
+        'reviewer__first_name',
+        'reviewer__last_name'
+    ]
+    readonly_fields = ['created_at', 'updated_at', 'reviewed_at']
     inlines = [QuestionScoreInline, ReviewLogInline]
+    autocomplete_fields = ['reviewer']
     
     def user_name(self, obj):
         return obj.test_result.user_test.user.get_full_name()
-    user_name.short_description = 'User'
+    user_name.short_description = 'Talaba'
     
     def exam_info(self, obj):
         return f"{obj.test_result.user_test.exam.title} ({obj.test_result.user_test.exam.get_level_display()})"
-    exam_info.short_description = 'Exam'
+    exam_info.short_description = 'Imtihon'
     
-    def reviewer_name(self, obj):
+    def reviewer_link(self, obj):
+        """Link to reviewer profile"""
         if obj.reviewer:
-            return obj.reviewer.get_full_name()
+            from django.urls import reverse
+            from django.utils.html import format_html
+            
+            # Try to get ReviewerProxy admin URL
+            try:
+                url = reverse('admin:multilevel_reviewerproxy_change', args=[obj.reviewer.id])
+                return format_html(
+                    '<a href="{}" target="_blank">{}</a>',
+                    url,
+                    obj.reviewer.get_full_name()
+                )
+            except:
+                return obj.reviewer.get_full_name()
         return "-"
-    reviewer_name.short_description = 'Reviewer'
+    reviewer_link.short_description = 'Tekshiruvchi'
 
     def get_queryset(self, request):
         return super().get_queryset(request).select_related(
@@ -214,7 +237,7 @@ class SubmissionMediaAdmin(admin.ModelAdmin):
     
     def user_name(self, obj):
         return obj.test_result.user_test.user.get_full_name()
-    user_name.short_description = 'User'
+    user_name.short_description = 'Foydalanuvchi'
     
     def get_queryset(self, request):
         return super().get_queryset(request).select_related(
@@ -231,18 +254,25 @@ class ReviewLogAdmin(admin.ModelAdmin):
     
     def user_name(self, obj):
         return obj.manual_review.test_result.user_test.user.get_full_name()
-    user_name.short_description = 'User'
+    user_name.short_description = 'Foydalanuvchi'
     
     def section(self, obj):
         return obj.manual_review.section
+    section.short_description = 'Bo\'lim'
     
     def reviewer_name(self, obj):
         if obj.reviewer:
             return obj.reviewer.get_full_name()
         return "-"
-    reviewer_name.short_description = 'Reviewer'
+    reviewer_name.short_description = 'Tekshiruvchi'
     
     def get_queryset(self, request):
         return super().get_queryset(request).select_related(
             'manual_review__test_result__user_test__user', 'reviewer'
         )
+
+
+# ===== REVIEWER MANAGEMENT =====
+# Import the comprehensive Reviewer admin from reviewer_admin.py
+# This provides full reviewer management with statistics and review history
+from .reviewer_admin import ReviewerAdmin  # noqa: F401

@@ -100,11 +100,61 @@ def validate_test_level(level):
     Returns:
         bool: True if level is supported, False otherwise
     """
-    supported_levels = ['multilevel', 'a1', 'a2', 'b1', 'b2', 'c1']
+    supported_levels = ['multilevel', 'a1', 'a2', 'b1', 'b2', 'c1', 'tys']
     return level.lower() in supported_levels
 
 
-def get_score_details(test_type, correct_answers, total_questions):
+def get_tys_listening_score(correct_answers, total_questions=30):
+    """
+    Get TYS listening test score based on number of correct answers.
+    TYS listening: 25 points total, 30 questions, 0.83 points per correct answer
+    
+    Args:
+        correct_answers (int): Number of correct answers (0-30)
+        total_questions (int): Total number of questions (default 30)
+    
+    Returns:
+        float: Score from 0-25
+    """
+    if not isinstance(correct_answers, int):
+        raise ValueError("correct_answers must be an integer")
+    
+    if correct_answers < 0:
+        return 0.0
+    elif correct_answers > total_questions:
+        return 25.0  # Maximum score
+    
+    # Each correct answer = 25/30 = 0.8333... points
+    score = (correct_answers / total_questions) * 25.0
+    return round(score, 2)
+
+
+def get_tys_reading_score(correct_answers, total_questions=40):
+    """
+    Get TYS reading test score based on number of correct answers.
+    TYS reading: 25 points total, 40 questions, 0.625 points per correct answer
+    
+    Args:
+        correct_answers (int): Number of correct answers (0-40)
+        total_questions (int): Total number of questions (default 40)
+    
+    Returns:
+        float: Score from 0-25
+    """
+    if not isinstance(correct_answers, int):
+        raise ValueError("correct_answers must be an integer")
+    
+    if correct_answers < 0:
+        return 0.0
+    elif correct_answers > total_questions:
+        return 25.0  # Maximum score
+    
+    # Each correct answer = 25/40 = 0.625 points
+    score = (correct_answers / total_questions) * 25.0
+    return round(score, 2)
+
+
+def get_score_details(test_type, correct_answers, total_questions, exam_level='multilevel'):
     """
     Get detailed score information including percentage and level.
     
@@ -112,6 +162,7 @@ def get_score_details(test_type, correct_answers, total_questions):
         test_type (str): Type of test ('listening' or 'reading')
         correct_answers (int): Number of correct answers
         total_questions (int): Total number of questions
+        exam_level (str): Exam level ('multilevel', 'tys', etc.)
     
     Returns:
         dict: Dictionary containing score details
@@ -125,8 +176,17 @@ def get_score_details(test_type, correct_answers, total_questions):
             'level': 'Below A1'
         }
     
-    # Get score from scoring table
-    score = get_test_score(test_type, correct_answers)
+    # Get score based on exam level
+    if exam_level.lower() == 'tys':
+        if test_type.lower() == 'listening':
+            score = get_tys_listening_score(correct_answers, total_questions)
+        elif test_type.lower() == 'reading':
+            score = get_tys_reading_score(correct_answers, total_questions)
+        else:
+            raise ValueError("test_type must be 'listening' or 'reading'")
+    else:
+        # Use multilevel scoring table
+        score = get_test_score(test_type, correct_answers)
     
     # Calculate percentage
     percentage = (correct_answers / total_questions) * 100
@@ -143,24 +203,38 @@ def get_score_details(test_type, correct_answers, total_questions):
     }
 
 
-def get_level_from_score(score):
+def get_level_from_score(score, exam_level='multilevel'):
     """
-    Determine CEFR level based on average score (0-75).
+    Determine CEFR level based on average score.
     
     Args:
-        score (int): Average test score (0-75)
+        score (float): Average test score
+        exam_level (str): Exam level ('multilevel' or 'tys')
     
     Returns:
         str: CEFR level
     """
-    if score >= 65:
-        return "C1"
-    elif score >= 51:
-        return "B2"
-    elif score >= 38:
-        return "B1"
+    if exam_level.lower() == 'tys':
+        # TYS scoring: 0-25 points per section, 100 total
+        # Convert to equivalent multilevel scale for level determination
+        if score >= 87:  # 87/100 = 65/75 equivalent
+            return "C1"
+        elif score >= 68:  # 68/100 = 51/75 equivalent
+            return "B2"
+        elif score >= 51:  # 51/100 = 38/75 equivalent
+            return "B1"
+        else:
+            return "Below B1"
     else:
-        return "Below B1"
+        # Multilevel scoring: 0-75 points per section
+        if score >= 65:
+            return "C1"
+        elif score >= 51:
+            return "B2"
+        elif score >= 38:
+            return "B1"
+        else:
+            return "Below B1"
 
 
 def get_all_scores():
@@ -593,6 +667,97 @@ FAQAT JSON FORMATDA JAVOB BERING:
     return prompt
 
 
+def update_final_exam_score(user_test_id):
+    """
+    Update final exam score when all sections are completed.
+    
+    Args:
+        user_test_id (int): UserTest ID
+    
+    Returns:
+        dict: Result of the update operation
+    """
+    from .models import UserTest, TestResult, Section
+    
+    try:
+        user_test = UserTest.objects.get(id=user_test_id)
+        
+        # Check if this is a multilevel or tys exam
+        is_multilevel = user_test.exam.level in ['multilevel', 'tys']
+        
+        if not is_multilevel:
+            return {
+                'success': False,
+                'error': 'This function is only for multilevel and TYS exams',
+                'user_test_id': user_test_id
+            }
+        
+        # Get all completed test results for this user test
+        test_results = TestResult.objects.filter(
+            user_test=user_test,
+            status='completed'
+        ).select_related('section')
+        
+        # Check if all 4 sections are completed
+        total_sections = Section.objects.filter(exam=user_test.exam).count()
+        completed_sections = test_results.count()
+        
+        if completed_sections < 4:
+            return {
+                'success': False,
+                'error': f'Not all sections completed. {completed_sections}/4 sections done.',
+                'user_test_id': user_test_id,
+                'completed_sections': completed_sections,
+                'total_sections': 4
+            }
+        
+        # Calculate total score from all sections
+        total_score = sum(test_result.score for test_result in test_results)
+        
+        # Calculate final score based on exam type
+        if user_test.exam.level.lower() == 'tys':
+            # TYS: total score is the sum of all sections (max 100)
+            final_score = round(total_score, 2)
+        else:
+            # Multilevel: average score of all sections (max 75)
+            final_score = round(total_score / 4, 2)
+        
+        # Update user test with final score
+        user_test.score = final_score
+        user_test.status = 'completed'
+        user_test.save()
+        
+        # Determine level based on final score
+        level = get_level_from_score(final_score, user_test.exam.level)
+        
+        # Note: SMS notification is NOT sent here anymore
+        # It's sent by the signal when is_checked becomes True
+        # This prevents duplicate SMS sending
+        
+        return {
+            'success': True,
+            'user_test_id': user_test_id,
+            'final_score': final_score,
+            'total_score': total_score,
+            'level': level,
+            'exam_level': user_test.exam.level,
+            'completed_sections': completed_sections
+        }
+        
+    except UserTest.DoesNotExist:
+        return {
+            'success': False,
+            'error': 'User test not found',
+            'user_test_id': user_test_id
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'error': f'Error updating final score: {str(e)}',
+            'user_test_id': user_test_id
+        }
+
+
 def calculate_overall_test_result(user_test_id):
     """
     Calculate overall test result for a user test.
@@ -662,16 +827,21 @@ def calculate_overall_test_result(user_test_id):
         
         # Calculate average score based on exam type
         if is_multilevel:
-            # For multilevel and TYS: divide by 4 sections
-            average_score = total_score / 4 if completed_sections == 4 else 0
-            max_possible_score = 300  # 4 sections * 75 points each
+            if user_test.exam.level.lower() == 'tys':
+                # TYS: 4 sections * 25 points each = 100 total
+                average_score = total_score / 4 if completed_sections == 4 else 0
+                max_possible_score = 100  # 4 sections * 25 points each
+            else:
+                # Multilevel: 4 sections * 75 points each = 300 total
+                average_score = total_score / 4 if completed_sections == 4 else 0
+                max_possible_score = 300  # 4 sections * 75 points each
         else:
             # For other levels: use the single section score
             average_score = total_score
             max_possible_score = 75  # Single section max score
         
-        # Determine level based on average score
-        level = get_level_from_score(average_score)
+        # Determine level based on average score and exam type
+        level = get_level_from_score(average_score, user_test.exam.level)
         
         return {
             'user_test_id': user_test_id,

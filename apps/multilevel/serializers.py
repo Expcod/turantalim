@@ -8,7 +8,7 @@ import tempfile
 import os
 import logging
 from django.db.models import Avg
-from .multilevel_score import get_test_score, get_level_from_score
+from .multilevel_score import get_test_score, get_level_from_score, get_tys_listening_score, get_tys_reading_score
 
 logger = logging.getLogger(__name__)
 
@@ -333,26 +333,44 @@ class TestResultDetailSerializer(serializers.ModelSerializer):
         total = self.get_total_questions(obj)
         correct = self.get_correct_answers(obj)
         
-        # Use multilevel scoring for listening and reading tests
+        # Use multilevel or TYS scoring for listening and reading tests
         section_type = obj.section.type.lower()
         if section_type in ['listening', 'reading']:
             try:
-                score = get_test_score(section_type, correct)
-                return score
+                # Get exam level for proper scoring
+                exam_level = obj.user_test.exam.level
+                if exam_level.lower() == 'tys':
+                    if section_type == 'listening':
+                        return get_tys_listening_score(correct, total)
+                    elif section_type == 'reading':
+                        return get_tys_reading_score(correct, total)
+                else:
+                    return get_test_score(section_type, correct)
             except ValueError:
                 return 0
         else:
-            # For writing and speaking, return stored section score (0-75)
+            # For writing and speaking, return stored section score (0-75 or 0-25)
             return getattr(obj, 'score', 0) or 0
 
     def get_level(self, obj):
         section_type = obj.section.type.lower()
+        exam_level = obj.user_test.exam.level
+        
         if section_type in ['listening', 'reading']:
             correct = self.get_correct_answers(obj)
-            score = get_test_score(section_type, correct)
+            total = self.get_total_questions(obj)
+            
+            if exam_level.lower() == 'tys':
+                if section_type == 'listening':
+                    score = get_tys_listening_score(correct, total)
+                elif section_type == 'reading':
+                    score = get_tys_reading_score(correct, total)
+            else:
+                score = get_test_score(section_type, correct)
         else:
             score = getattr(obj, 'score', 0) or 0
-        return get_level_from_score(score)
+
+        return get_level_from_score(score, exam_level)
 
 class TestResultListSerializer(serializers.ModelSerializer):
     section = serializers.CharField(source="section.title")
@@ -373,10 +391,18 @@ class TestResultListSerializer(serializers.ModelSerializer):
             if total <= 0:
                 return 0
             try:
-                return get_test_score(section_type, correct)
+                # Get exam level for proper scoring
+                exam_level = obj.user_test.exam.level
+                if exam_level.lower() == 'tys':
+                    if section_type == 'listening':
+                        return get_tys_listening_score(correct, total)
+                    elif section_type == 'reading':
+                        return get_tys_reading_score(correct, total)
+                else:
+                    return get_test_score(section_type, correct)
             except ValueError:
                 return 0
-        # Writing/Speaking: use stored section score (sum of parts, max 75)
+        # Writing/Speaking: use stored section score (sum of parts, max 75 or 25)
         return getattr(obj, 'score', 0) or 0
 
 class OverallTestResultSerializer(serializers.Serializer):

@@ -101,13 +101,14 @@ class SubmissionListSerializer(serializers.ModelSerializer):
     """Serializer for listing submissions that need manual review"""
     user = UserMiniSerializer(source='user_test.user', read_only=True)
     exam = ExamMiniSerializer(source='user_test.exam', read_only=True)
+    test_result_id = serializers.IntegerField(source='id', read_only=True)
     sections = serializers.SerializerMethodField()
     writing_status = serializers.SerializerMethodField()
     speaking_status = serializers.SerializerMethodField()
     
     class Meta:
         model = TestResult
-        fields = ['id', 'user', 'exam', 'sections', 'writing_status', 
+        fields = ['id', 'test_result_id', 'user', 'exam', 'sections', 'writing_status', 
                  'speaking_status', 'created_at']
         
     def get_sections(self, obj):
@@ -145,6 +146,7 @@ class SubmissionListSerializer(serializers.ModelSerializer):
 class SubmissionDetailSerializer(serializers.ModelSerializer):
     """Detailed serializer for a full submission with all sections"""
     user_test = UserTestMiniSerializer(read_only=True)
+    section_type = serializers.SerializerMethodField()
     listening_result = serializers.SerializerMethodField()
     reading_result = serializers.SerializerMethodField()
     writing_result = serializers.SerializerMethodField()
@@ -153,8 +155,12 @@ class SubmissionDetailSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = TestResult
-        fields = ['id', 'user_test', 'listening_result', 'reading_result',
+        fields = ['id', 'user_test', 'section_type', 'listening_result', 'reading_result',
                  'writing_result', 'speaking_result', 'media']
+    
+    def get_section_type(self, obj):
+        """Get the section type from the test_result's section"""
+        return obj.section.type
     
     def get_listening_result(self, obj):
         # Get listening result for the same user_test
@@ -235,33 +241,67 @@ class WriteManualReviewSerializer(serializers.Serializer):
     """Serializer for updating manual review scores"""
     question_scores = serializers.DictField(
         child=serializers.DictField(
-            child=serializers.CharField()
+            child=serializers.CharField(allow_blank=True, required=False)
         ),
         required=True
     )
     total_score = serializers.FloatField(required=True)
     notified = serializers.BooleanField(default=True)
+    is_draft = serializers.BooleanField(default=False)
     
     def validate_question_scores(self, value):
-        # Validate that all question scores are numbers between 0-100
+        # Validate that all question scores are numbers within allowed range
         for question_num, data in value.items():
             if 'score' not in data:
                 raise serializers.ValidationError(f"Question {question_num} missing score")
             
             try:
                 score = float(data['score'])
-                if score < 0 or score > 100:
-                    raise serializers.ValidationError(
-                        f"Question {question_num} score must be between 0-100"
-                    )
+                
+                # Different max scores for different questions
+                if question_num == '1':
+                    max_score = 75  # Can be Task 1 (Letter) 24.75 or Speaking 75
+                    # For writing: max 24.75, for speaking: max 75
+                    # We'll validate more strictly based on context
+                    if score < 0 or score > max_score:
+                        raise serializers.ValidationError(
+                            f"Question 1 score must be between 0-{max_score}"
+                        )
+                elif question_num == '2':
+                    max_score = 50.25  # Task 2 (Essay) - only for writing
+                    if score < 0 or score > max_score:
+                        raise serializers.ValidationError(
+                            f"Task 2 score must be between 0-{max_score}"
+                        )
+                else:
+                    # Generic validation for other questions
+                    if score < 0 or score > 100:
+                        raise serializers.ValidationError(
+                            f"Question {question_num} score must be between 0-100"
+                        )
             except (ValueError, TypeError):
                 raise serializers.ValidationError(
                     f"Question {question_num} score must be a number"
                 )
+            
+            # Ensure comment is a string (allow blank/empty)
+            if 'comment' in data:
+                if isinstance(data['comment'], list):
+                    # If comment is a list, take the first element or empty string
+                    data['comment'] = data['comment'][0] if data['comment'] else ''
+                elif data['comment'] is None or data['comment'] == '':
+                    # Allow empty/blank comments
+                    data['comment'] = ''
+                elif not isinstance(data['comment'], str):
+                    # Convert to string if it's not already
+                    data['comment'] = str(data['comment'])
+            else:
+                # If comment is missing, set it to empty string
+                data['comment'] = ''
         
         return value
     
     def validate_total_score(self, value):
-        if value < 0 or value > 100:
-            raise serializers.ValidationError("Total score must be between 0-100")
+        if value < 0 or value > 75:
+            raise serializers.ValidationError("Total score must be between 0-75")
         return value

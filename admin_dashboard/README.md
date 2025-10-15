@@ -1,6 +1,6 @@
 # Turantalim Admin Dashboard
 
-Bu loyiha Turantalim platformasi uchun ishlab chiqilgan admin dashboarddir. Dashboard orqali o'qituvchilar foydalanuvchilar tomonidan topshirilgan imtihonlarning Writing va Speaking sectionlarini tekshirish va baholash imkoniyatiga ega bo'ladilar.
+Bu loyiha Turantalim platformasi uchun ishlab chiqilgan admin dashboarddir. Dashboard orqali o'qituvchilar foydalanuvchilar tomonidan topshirilgan imtihonlarning Yozish va Gapirish sectionlarini tekshirish va baholash imkoniyatiga ega bo'ladilar.
 
 ## Kirish Ma'lumotlari
 
@@ -23,18 +23,18 @@ Bu loyiha Turantalim platformasi uchun ishlab chiqilgan admin dashboarddir. Dash
 2. **Imtihonlar ro'yxati**:
    - Barcha yangi ishlangan imtihonlarni ko'rish (TYS, Multilevel)
    - Foydalanuvchi ismi, familiyasi, imtihon nomi, sanasi ko'rsatilgan
-   - Status bo'yicha filterlash (Pending / In review / Reviewed)
+   - Status bo'yicha filterlash (Kutilmoqda / Ko'rilmoqda / Tekshirilgan)
    - Imtihon turi va bo'limlar bo'yicha qidirish
 
 3. **Imtihon natijalarini ko'rish va baholash**:
-   - 4 ta section (Listening, Reading, Writing, Speaking)
-   - Listening va Reading - faqat ko'rish (read-only) - avtomatik tekshirilgan
-   - Writing - rasm javoblarni baholash
-   - Speaking - audio javoblarni baholash
+   - 4 ta section (Tinglash, O'qish, Yozish, Gapirish)
+   - Tinglash va O'qish - faqat ko'rish (read-only) - avtomatik tekshirilgan
+   - Yozish - rasm javoblarni baholash
+   - Gapirish - audio javoblarni baholash
 
 4. **Media fayllarni ko'rish**:
-   - Writing uchun rasmlar (maximum 3 ta rasm har bir savolga)
-   - Speaking uchun audio player (play, pause, stop)
+   - Yozish uchun rasmlar (maximum 3 ta rasm har bir savolga)
+   - Gapirish uchun audio player (play, pause, stop)
 
 5. **Baholash va saqlash**:
    - Har bir savol uchun alohida ball qo'yish (0-100)
@@ -77,11 +77,11 @@ admin_dashboard/
 
 ### 2. Imtihonlarni ko'rish
 
-1. Bosh sahifada (index.html) barcha pending imtihonlar ko'rinadi
+1. Bosh sahifada (index.html) barcha kutilmoqda imtihonlar ko'rinadi
 2. Filtrlar orqali qidirish:
    - Imtihon turi: TYS, CEFR, Multilevel
-   - Bo'lim: Writing, Speaking
-   - Status: Pending, Reviewing, Checked
+   - Bo'lim: Yozish, Gapirish
+   - Status: Kutilmoqda, Ko'rilmoqda, Tekshirilgan
    - Qidiruv: Foydalanuvchi ismi yoki telefon raqami
 
 ### 3. Imtihonni tekshirish
@@ -89,15 +89,15 @@ admin_dashboard/
 1. Imtihon ro'yxatidan kerakli imtihonni tanlang
 2. "Ochish" tugmasini bosing
 3. Submission sahifasida 4 ta bo'lim ko'rinadi:
-   - **Listening**: Faqat ko'rish (avtomatik tekshirilgan)
-   - **Reading**: Faqat ko'rish (avtomatik tekshirilgan)
-   - **Writing**: Rasmlarni ko'rish va baholash
-   - **Speaking**: Audiolarni eshitish va baholash
+   - **Tinglash**: Faqat ko'rish (avtomatik tekshirilgan)
+   - **O'qish**: Faqat ko'rish (avtomatik tekshirilgan)
+   - **Yozish**: Rasmlarni ko'rish va baholash
+   - **Gapirish**: Audiolarni eshitish va baholash
 
 ### 4. Baholash
 
-1. Writing yoki Speaking bo'limini tanlang
-2. Har bir savol uchun rasmlar (Writing) yoki audiolar (Speaking) ko'rinadi
+1. Yozish yoki Gapirish bo'limini tanlang
+2. Har bir savol uchun rasmlar (Yozish) yoki audiolar (Gapirish) ko'rinadi
 3. O'ng tarafdagi panelda:
    - Har bir savol uchun ball kiriting (0-100)
    - Ixtiyoriy izoh qoldiring
@@ -124,7 +124,7 @@ GET /multilevel/api/admin/submissions/
 GET /multilevel/api/admin/submissions/{submission_id}/
 ```
 
-### 3. Writing ballari yangilash
+### 3. Yozish ballari yangilash
 ```
 PATCH /multilevel/api/admin/submissions/{submission_id}/writing/
 ```
@@ -140,7 +140,7 @@ PATCH /multilevel/api/admin/submissions/{submission_id}/writing/
 }
 ```
 
-### 4. Speaking ballari yangilash
+### 4. Gapirish ballari yangilash
 ```
 PATCH /multilevel/api/admin/submissions/{submission_id}/speaking/
 ```
